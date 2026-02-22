@@ -1,5 +1,5 @@
 # AI1_search-algorithms
-
+```
 src
 │
 ├── algorithms/                 # Core algorithm implementations
@@ -30,3 +30,4 @@ src
 ├── requirements.txt            # numpy, matplotlib, seaborn
 ├── README.md                   # Project overview and setup instructions
 └── main.py                     # Optional: CLI script to run specific tests
+```

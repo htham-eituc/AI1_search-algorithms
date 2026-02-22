@@ -5,8 +5,6 @@ from ..base import BaseMetaheuristic
 class DE(BaseMetaheuristic):
     """
     Differential Evolution (DE)
-    A highly efficient population-based optimizer that uses vector differences 
-    for mutation. Excellent for continuous, nonlinear, and multimodal landscapes.
     """
     def __init__(self, objective_func, pop_size, max_iter, bounds, dim, F=0.8, CR=0.9):
         """
@@ -82,6 +80,8 @@ class DE(BaseMetaheuristic):
                 
             # Record best fitness for convergence plots
             self.convergence_curve[iteration] = self.best_fitness
+            self.average_fitness_curve[iteration] = np.mean(fitness)
+            self.diversity_curve[iteration] = np.mean(np.std(population, axis=0))
             
         self.execution_time = time.time() - start_time
         return self.get_results()

@@ -48,6 +48,10 @@ class BaseMetaheuristic(BaseAlgorithm):
         
         # Array to track the best fitness at every single iteration for the Convergence plot
         self.convergence_curve = np.zeros(max_iter)
+        # For Average Solution Quality
+        self.average_fitness_curve = np.zeros(max_iter)
+        # For Exploration vs. Exploitation (Spatial Diversity)
+        self.diversity_curve = np.zeros(max_iter)
 
     def initialize_population(self):
         """
@@ -69,6 +73,16 @@ class BaseMetaheuristic(BaseAlgorithm):
         Returns a 1D NumPy array of fitness values.
         """
         return self.objective_func(population)
+    
+    def get_results(self):
+        """Upgraded to return the new tracking curves."""
+        results = super().get_results()
+        results.update({
+            "convergence_curve": self.convergence_curve,
+            "average_fitness_curve": self.average_fitness_curve,
+            "diversity_curve": self.diversity_curve
+        })
+        return results
 
     # The actual solve() method will be implemented by the specific GA/PSO/etc. classes,
     # but they will call self.initialize_population() and self.evaluate_population() inside it.
