@@ -1,0 +1,131 @@
+{
+  "problems": {
+    "sphere": {
+      "name": "Sphere",
+      "dimensions": [10, 30, 50],
+      "search_space": [-5.12, 5.12],
+      "global_minimum": 0.0,
+      "minimum_at": "origin",
+      "tolerance": 1e-6
+    },
+    "rastrigin": {
+      "name": "Rastrigin",
+      "dimensions": [10, 30, 50],
+      "search_space": [-5.12, 5.12],
+      "global_minimum": 0.0,
+      "minimum_at": "origin",
+      "tolerance": 1e-4
+    },
+    "rosenbrock": {
+      "name": "Rosenbrock",
+      "dimensions": [10, 30, 50],
+      "search_space": [-2.048, 2.048],
+      "global_minimum": 0.0,
+      "minimum_at": "ones",
+      "tolerance": 1e-4
+    }
+  },
+
+  "algorithms": {
+    "SA": {
+      "name": "Simulated Annealing",
+      "defaults": {
+        "max_iterations": 5000,
+        "initial_temperature": 1000.0,
+        "cooling_rate": 0.95,
+        "cooling_schedule": "exponential",
+        "min_temperature": 1e-8,
+        "step_size": 0.1,
+        "runs": 30
+      },
+      "problem_overrides": {
+        "sphere": {
+          "initial_temperature": 500.0,
+          "cooling_rate": 0.97,
+          "step_size": 0.05
+        },
+        "rastrigin": {
+          "initial_temperature": 2000.0,
+          "cooling_rate": 0.92,
+          "step_size": 0.2,
+          "max_iterations": 8000
+        },
+        "rosenbrock": {
+          "initial_temperature": 1000.0,
+          "cooling_rate": 0.95,
+          "step_size": 0.1,
+          "max_iterations": 8000
+        }
+      }
+    },
+
+    "DE": {
+      "name": "Differential Evolution",
+      "defaults": {
+        "max_iterations": 1000,
+        "population_size": 50,
+        "mutation_factor": 0.8,
+        "crossover_rate": 0.9,
+        "strategy": "rand/1/bin",
+        "runs": 30
+      },
+      "problem_overrides": {
+        "sphere": {
+          "mutation_factor": 0.6,
+          "crossover_rate": 0.8,
+          "population_size": 30
+        },
+        "rastrigin": {
+          "mutation_factor": 0.9,
+          "crossover_rate": 0.95,
+          "population_size": 100,
+          "max_iterations": 2000
+        },
+        "rosenbrock": {
+          "mutation_factor": 0.8,
+          "crossover_rate": 0.9,
+          "population_size": 50,
+          "max_iterations": 2000
+        }
+      }
+    },
+
+    "GSA": {
+      "name": "Gravitational Search Algorithm",
+      "defaults": {
+        "max_iterations": 1000,
+        "population_size": 50,
+        "gravitational_constant": 100.0,
+        "alpha": 20,
+        "epsilon": 1e-10,
+        "runs": 30
+      },
+      "problem_overrides": {
+        "sphere": {
+          "gravitational_constant": 50.0,
+          "population_size": 30
+        },
+        "rastrigin": {
+          "gravitational_constant": 100.0,
+          "population_size": 100,
+          "max_iterations": 2000,
+          "alpha": 25
+        },
+        "rosenbrock": {
+          "gravitational_constant": 100.0,
+          "population_size": 50,
+          "max_iterations": 2000,
+          "alpha": 20
+        }
+      }
+    }
+  },
+
+  "experiment": {
+    "seed": 42,
+    "dimensions": [10, 30, 50],
+    "metrics": ["best_fitness", "mean_fitness", "std_fitness", "convergence_iteration"],
+    "save_convergence_curve": true,
+    "output_dir": "results/"
+  }
+}
