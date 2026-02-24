@@ -1,245 +1,208 @@
 """
-Local Search Algorithms on Graphs
-====================================
-- Pure Python only (no high-level libraries)
-- Modular, well-documented, Python best practices
-- Configurable parameters (max_iter, restarts, step size, etc.)
-- Supports both discrete (graph coloring) and continuous (function optimization)
+Local Search Algorithms
+========================
+HillClimbing           — Steepest Ascent on a 2-D grid (inherits BaseGraphSearch)
+HillClimbingContinuous — Steepest Ascent for continuous functions (inherits BaseMetaheuristic)
 
-Algorithms:
-    1. Hill Climbing — Steepest Ascent (discrete: Graph Coloring)
-    2. Hill Climbing — Steepest Ascent (continuous: function minimization)
+Both use random restarts to escape local optima.
 """
 
-import random
+import time
+import numpy as np
+import sys
+import os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
+from algorithms.base import BaseGraphSearch, BaseMetaheuristic
+
+
+# ── Shared heuristic ──────────────────────────────────────────────────────────
+
+def _manhattan(node, goal) -> float:
+    return abs(node[0] - goal[0]) + abs(node[1] - goal[1])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  1a. Hill Climbing — Steepest Ascent (Discrete: Graph Coloring)
+#  1. Hill Climbing — Steepest Ascent (Grid / Discrete)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def hill_climbing_coloring(
-    graph: dict,
-    n_colors: int,
-    max_iter: int = 1000,
-    max_restarts: int = 50,
-    seed: int = None,
-) -> dict:
+class HillClimbing(BaseGraphSearch):
     """
-    Hill Climbing (Steepest Ascent) for Graph Coloring.
+    Hill Climbing (Steepest Ascent) on a 2-D grid.
 
-    Goal: assign one of n_colors colors to each node so that no two
-    adjacent nodes share the same color (minimize number of conflicts).
+    At each step, ALL valid neighbors are evaluated; the one with the
+    lowest Manhattan distance to the goal is selected (steepest descent
+    on the heuristic landscape). Random restarts escape dead ends.
 
-    At each step, ALL neighbors of the current state are evaluated;
-    the move that reduces conflicts most is taken (steepest ascent).
-    Random restarts escape local optima.
+    Not guaranteed to find the globally shortest path — susceptible to
+    local optima (dead ends / narrow corridors).
 
     Parameters
     ----------
-    graph : dict
-        Adjacency list {node: [neighbor, ...]}.
-    n_colors : int
-        Number of colors available.
-    max_iter : int
-        Maximum iterations per restart.
     max_restarts : int
-        Number of random restarts allowed.
+        Number of random restarts when stuck in a dead end.
     seed : int or None
         Random seed for reproducibility.
-
-    Returns
-    -------
-    dict
-        'coloring'   : dict {node: color}  – best coloring found
-        'conflicts'  : int   – number of conflicting edges (0 = valid coloring)
-        'solved'     : bool  – True if a valid coloring was found
-        'iterations' : int   – total iterations performed
-        'history'    : list  – conflict count per iteration
     """
-    rng   = random.Random(seed)
-    nodes = list(graph.keys())
 
-    def count_conflicts(coloring: dict) -> int:
-        """Count edges where both endpoints share the same color."""
-        total = 0
-        for u, neighbors in graph.items():
-            for v in neighbors:
-                if coloring[u] == coloring[v]:
-                    total += 1
-        return total // 2                      # each edge counted twice
+    def __init__(self, grid, start_node, end_node,
+                 max_restarts: int = 10, seed: int = None):
+        super().__init__("HillClimbing", grid, start_node, end_node)
+        self.max_restarts = max_restarts
+        self.seed         = seed
 
-    def node_conflicts(node, coloring: dict) -> int:
-        """Number of neighbors sharing node's color."""
-        return sum(1 for v in graph[node] if coloring[v] == coloring[node])
+    def _free_cells(self):
+        """All passable (non-wall) cell coordinates."""
+        return list(zip(*np.where(self.grid == 0)))
 
-    best_coloring  = None
-    best_conflicts = float('inf')
-    total_iters    = 0
-    history        = []
+    def solve(self):
+        t0 = time.time()
+        if self.seed is not None:
+            np.random.seed(self.seed)
 
-    for _ in range(max_restarts):
-        # ── Random initialisation ────────────────────────────────────────────
-        coloring = {n: rng.randint(0, n_colors - 1) for n in nodes}
-        conflicts = count_conflicts(coloring)
+        start      = self.start_node
+        goal       = self.end_node
+        free_cells = self._free_cells()
+        best_path  = None
 
-        for it in range(max_iter):
-            total_iters += 1
-            history.append(conflicts)
+        for restart in range(self.max_restarts + 1):
+            current = start if restart == 0 else \
+                      free_cells[np.random.randint(len(free_cells))]
+            path    = [current]
+            visited = {current}
 
-            if conflicts == 0:                 # valid coloring found
+            while current != goal:
+                neighbors = [n for n in self.get_neighbors(current)
+                             if n not in visited]
+                if not neighbors:
+                    break                       # dead end → restart
+
+                self.nodes_expanded += 1
+                self.explored_path.append(current)
+
+                # Steepest ascent: pick neighbor minimizing h(n, goal)
+                current = min(neighbors, key=lambda n: _manhattan(n, goal))
+                path.append(current)
+                visited.add(current)
+
+            if current == goal:
+                if best_path is None or len(path) < len(best_path):
+                    best_path = path
                 break
 
-            # ── Steepest ascent: evaluate ALL single-node recolorings ─────────
-            best_delta  = 0                    # improvement (reduction in conflicts)
-            best_moves  = []                   # (node, new_color) with best_delta
+        if best_path is not None:
+            self.best_solution = best_path
+            self.best_fitness  = len(best_path) - 1
+        else:
+            self.best_solution = []
+            self.best_fitness  = float('inf')
 
-            for node in nodes:
-                old_color     = coloring[node]
-                old_node_conf = node_conflicts(node, coloring)
-                for c in range(n_colors):
-                    if c == old_color:
-                        continue
-                    coloring[node] = c
-                    new_node_conf  = node_conflicts(node, coloring)
-                    delta = old_node_conf - new_node_conf   # positive = improvement
-                    if delta > best_delta:
-                        best_delta = delta
-                        best_moves = [(node, c)]
-                    elif delta == best_delta and delta >= 0:
-                        best_moves.append((node, c))
-                coloring[node] = old_color     # restore
-
-            if not best_moves or best_delta <= 0:
-                break                          # local optimum — trigger restart
-
-            # Apply one best move (random tie-break)
-            node, color    = rng.choice(best_moves)
-            coloring[node] = color
-            conflicts      = count_conflicts(coloring)
-
-        if conflicts < best_conflicts:
-            best_conflicts = conflicts
-            best_coloring  = coloring.copy()
-
-        if best_conflicts == 0:
-            break                              # global solution found
-
-    return {
-        'coloring'  : best_coloring,
-        'conflicts' : best_conflicts,
-        'solved'    : best_conflicts == 0,
-        'iterations': total_iters,
-        'history'   : history,
-    }
+        self.execution_time = time.time() - t0
+        return self
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  1b. Hill Climbing — Steepest Ascent (Continuous: function minimization)
+#  2. Hill Climbing — Steepest Ascent (Continuous)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def hill_climbing_continuous(
-    obj_func,
-    dim: int,
-    bounds: tuple[float, float],
-    step_size: float = 0.1,
-    max_iter: int = 1000,
-    max_restarts: int = 20,
-    n_neighbors: int = 8,
-    step_decay: float = 0.995,
-    seed: int = None,
-    verbose: bool = False,
-) -> dict:
+class HillClimbingContinuous(BaseMetaheuristic):
     """
     Hill Climbing (Steepest Ascent) for continuous function minimization.
 
-    At each step, n_neighbors candidate solutions are generated by
-    perturbing the current position; the best one (steepest descent)
-    is accepted only if it improves the objective.
-    Random restarts and step size decay help escape shallow local optima.
+    At each step, `pop_size` neighbors are generated by Gaussian perturbation;
+    the best improvement is accepted (steepest descent). Step-size decay and
+    random restarts help escape shallow local optima.
+
+    Inherits BaseMetaheuristic so results plug directly into the same
+    visualization pipeline as TLBO / SFO / CA.
 
     Parameters
     ----------
-    obj_func : callable
-        f(x) -> float to minimize. x is a list/array of length dim.
-    dim : int
-        Number of decision variables.
-    bounds : tuple of (float, float)
-        (lower_bound, upper_bound) for all dimensions.
-    step_size : float
-        Initial perturbation magnitude.
+    objective_func : callable
+        f(population) -> np.ndarray of shape (n,). Must be vectorised.
+    pop_size : int
+        Number of neighbors sampled per iteration (controls search width).
     max_iter : int
-        Maximum iterations per restart.
-    max_restarts : int
-        Number of random restarts.
-    n_neighbors : int
-        Number of neighbors sampled per iteration (steepest ascent).
+    bounds : np.ndarray, shape (dim, 2)
+    dim : int
+    step_size : float
+        Initial Gaussian perturbation std deviation.
     step_decay : float
         Multiplicative decay applied to step_size each iteration.
+    max_restarts : int
+        Restart from a random point after `patience` non-improving steps.
+    patience : int
+        Non-improving steps before triggering a random restart.
     seed : int or None
-        Random seed for reproducibility.
-    verbose : bool
-        Print best fitness every 200 iterations.
-
-    Returns
-    -------
-    dict
-        'best_solution' : list[float]
-        'best_fitness'  : float
-        'history'       : list[float] – best fitness per iteration
-        'iterations'    : int
     """
-    rng    = random.Random(seed)
-    lb, ub = bounds
 
-    def clip(x):
-        return [max(lb, min(ub, xi)) for xi in x]
+    def __init__(self, objective_func, pop_size: int = 8, max_iter: int = 500,
+                 bounds: np.ndarray = None, dim: int = None,
+                 step_size: float = 0.5, step_decay: float = 0.995,
+                 max_restarts: int = 10, patience: int = 30,
+                 seed: int = None):
+        super().__init__("HillClimbingContinuous", objective_func,
+                         pop_size, max_iter, bounds, dim)
+        self.step_size    = step_size
+        self.step_decay   = step_decay
+        self.max_restarts = max_restarts
+        self.patience     = patience
+        self.seed         = seed
 
-    def random_point():
-        return [rng.uniform(lb, ub) for _ in range(dim)]
+    def solve(self):
+        if self.seed is not None:
+            np.random.seed(self.seed)
 
-    def perturb(x, step):
-        return clip([xi + rng.gauss(0, step) for xi in x])
+        lb   = self.bounds[:, 0]
+        ub   = self.bounds[:, 1]
+        t0   = time.time()
+        step = self.step_size
 
-    best_solution = random_point()
-    best_fitness  = obj_func(best_solution)
-    history       = []
-    total_iters   = 0
+        # ── Initialisation ────────────────────────────────────────────────────
+        current     = np.random.uniform(lb, ub, size=self.dim)
+        current_fit = self.objective_func(current.reshape(1, -1))[0]
 
-    for restart in range(max_restarts):
-        current     = random_point()
-        current_fit = obj_func(current)
-        step        = step_size
+        self.best_solution = current.copy()
+        self.best_fitness  = current_fit
 
-        for it in range(max_iter):
-            total_iters += 1
-            step        *= step_decay
+        restarts_done = 0
+        no_improve    = 0
 
-            # ── Steepest ascent: sample n_neighbors, pick the best ────────────
-            neighbors    = [perturb(current, step) for _ in range(n_neighbors)]
-            neighbor_fit = [obj_func(n) for n in neighbors]
-            best_nb_idx  = min(range(n_neighbors), key=lambda i: neighbor_fit[i])
+        for t in range(self.max_iter):
+            step *= self.step_decay
 
-            if neighbor_fit[best_nb_idx] < current_fit:
-                current     = neighbors[best_nb_idx]
-                current_fit = neighbor_fit[best_nb_idx]
+            # ── Steepest ascent: sample pop_size neighbors ────────────────────
+            noise      = np.random.normal(0, step, size=(self.pop_size, self.dim))
+            neighbors  = np.clip(current + noise, lb, ub)
+            nb_fitness = self.objective_func(neighbors)
 
-            history.append(current_fit)
+            best_idx = np.argmin(nb_fitness)
+            if nb_fitness[best_idx] < current_fit:
+                current     = neighbors[best_idx].copy()
+                current_fit = nb_fitness[best_idx]
+                no_improve  = 0
+            else:
+                no_improve += 1
 
-            if current_fit < best_fitness:
-                best_fitness  = current_fit
-                best_solution = current[:]
+            if current_fit < self.best_fitness:
+                self.best_fitness  = current_fit
+                self.best_solution = current.copy()
 
-            if verbose and total_iters % 200 == 0:
-                print(f"  [HC] iter {total_iters:5d} | restart {restart+1} "
-                      f"| best fitness: {best_fitness:.6e}")
+            # ── Random restart when stuck ──────────────────────────────────────
+            if no_improve >= self.patience and restarts_done < self.max_restarts:
+                current     = np.random.uniform(lb, ub, size=self.dim)
+                current_fit = self.objective_func(current.reshape(1, -1))[0]
+                step        = self.step_size          # reset step on restart
+                no_improve  = 0
+                restarts_done += 1
 
-    return {
-        'best_solution': best_solution,
-        'best_fitness' : best_fitness,
-        'history'      : history,
-        'iterations'   : total_iters,
-    }
+            # ── Track metrics ─────────────────────────────────────────────────
+            self.convergence_curve[t]     = self.best_fitness
+            self.average_fitness_curve[t] = current_fit
+            self.diversity_curve[t]       = step       # step size proxies diversity
+
+        self.execution_time = time.time() - t0
+        return self
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -248,52 +211,41 @@ def hill_climbing_continuous(
 
 if __name__ == "__main__":
 
-    # ── Demo 1: Graph Coloring on Petersen graph ──────────────────────────────
-    #
-    #   The Petersen graph: 10 nodes, chromatic number = 3
-    #   Outer pentagon: 0-1-2-3-4-0
-    #   Inner pentagram: 5-7-9-6-8-5
-    #   Spokes: 0-5, 1-6, 2-7, 3-8, 4-9
-    #
-    petersen = {
-        0: [1, 4, 5],  1: [0, 2, 6],  2: [1, 3, 7],
-        3: [2, 4, 8],  4: [3, 0, 9],  5: [0, 7, 8],
-        6: [1, 8, 9],  7: [2, 5, 9],  8: [3, 5, 6],
-        9: [4, 6, 7],
-    }
+    # ── Grid Hill Climbing ────────────────────────────────────────────────────
+    np.random.seed(5)
+    ROWS, COLS = 15, 15
+    grid = np.zeros((ROWS, COLS), dtype=int)
+    for r in range(ROWS):
+        for c in range(COLS):
+            if (r, c) not in [(0, 0), (14, 14)] and np.random.random() < 0.25:
+                grid[r, c] = 1
 
-    print("=" * 60)
-    print("  HC (Discrete) — Graph Coloring on Petersen Graph")
-    print("  Chromatic number = 3  (needs at least 3 colors)")
-    print("=" * 60)
+    START, GOAL = (0, 0), (14, 14)
+    hc_grid = HillClimbing(grid, START, GOAL, max_restarts=10, seed=42)
+    hc_grid.solve()
+    r = hc_grid.get_results()
+    found = r['best_fitness'] < float('inf')
+    print(f"[HillClimbing Grid]")
+    print(f"  Found={found} | path={r['path_length']} | "
+          f"nodes={r['nodes_expanded']} | "
+          f"time={r['execution_time_seconds']*1000:.2f}ms\n")
 
-    for n_colors in [2, 3, 4]:
-        r = hill_climbing_coloring(
-            petersen, n_colors=n_colors,
-            max_iter=500, max_restarts=30, seed=42
-        )
-        status = "✓ VALID" if r['solved'] else f"✗ {r['conflicts']} conflict(s)"
-        print(f"\n  Colors = {n_colors} → {status}")
-        if r['solved']:
-            by_color = {}
-            for node, c in sorted(r['coloring'].items()):
-                by_color.setdefault(c, []).append(node)
-            for c, nodes in sorted(by_color.items()):
-                print(f"    Color {c}: nodes {nodes}")
+    # ── Continuous Hill Climbing ───────────────────────────────────────────────
+    def sphere(pop: np.ndarray) -> np.ndarray:
+        if pop.ndim == 1:
+            pop = pop.reshape(1, -1)
+        return np.sum(pop ** 2, axis=1)
 
-    # ── Demo 2: Continuous — Sphere function ─────────────────────────────────
-    def sphere(x):
-        return sum(xi**2 for xi in x)
+    DIM    = 10
+    BOUNDS = np.array([[-5.12, 5.12]] * DIM)
 
-    print("\n" + "=" * 60)
-    print("  HC (Continuous) — Sphere Function, dim=10")
-    print("  Global minimum: f(0,...,0) = 0")
-    print("=" * 60)
-    r2 = hill_climbing_continuous(
-        sphere, dim=10, bounds=(-5.12, 5.12),
-        step_size=0.5, max_iter=500, max_restarts=20,
-        n_neighbors=8, seed=42, verbose=True
+    hc_cont = HillClimbingContinuous(
+        sphere, pop_size=8, max_iter=500,
+        bounds=BOUNDS, dim=DIM,
+        step_size=0.5, max_restarts=10, seed=42
     )
-    print(f"\n  Best fitness : {r2['best_fitness']:.6e}")
-    print(f"  Best solution: {[round(x, 5) for x in r2['best_solution']]}")
-    print(f"  Total iters  : {r2['iterations']}")
+    hc_cont.solve()
+    r2 = hc_cont.get_results()
+    print(f"[HillClimbingContinuous] Sphere dim={DIM}")
+    print(f"  Best fitness  : {r2['best_fitness']:.6e}")
+    print(f"  Execution time: {r2['execution_time_seconds']*1000:.2f}ms")
