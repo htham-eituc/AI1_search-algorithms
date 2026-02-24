@@ -159,6 +159,7 @@ class SimulatedAnnealing(BaseMetaheuristic):
             self.convergence_curve[iteration] = self.best_fitness
             self.average_fitness_curve[iteration] = np.mean(fitness)
             self.diversity_curve[iteration] = np.mean(np.std(population, axis=0))
+            self.population_history.append(np.copy(population))
             
             # --- COOL DOWN ---
             temperature = self._cool_temperature(temperature, iteration)

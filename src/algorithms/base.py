@@ -30,6 +30,7 @@ class BaseAlgorithm(ABC):
             "best_fitness": self.best_fitness,
             "best_solution": self.best_solution,
             "execution_time_seconds": self.execution_time
+            
         }
 
 
@@ -52,6 +53,8 @@ class BaseMetaheuristic(BaseAlgorithm):
         self.average_fitness_curve = np.zeros(max_iter)
         # For Exploration vs. Exploitation (Spatial Diversity)
         self.diversity_curve = np.zeros(max_iter)
+        # To store the positions of the agents for the MP4 video animation
+        self.population_history = []
 
     def initialize_population(self):
         """
@@ -80,7 +83,8 @@ class BaseMetaheuristic(BaseAlgorithm):
         results.update({
             "convergence_curve": self.convergence_curve,
             "average_fitness_curve": self.average_fitness_curve,
-            "diversity_curve": self.diversity_curve
+            "diversity_curve": self.diversity_curve,
+            "population_history": self.population_history 
         })
         return results
 

@@ -126,6 +126,7 @@ class FireflyAlgorithm(BaseMetaheuristic):
             self.convergence_curve[iteration]     = self.best_fitness
             self.average_fitness_curve[iteration] = np.mean(light_intensity)
             self.diversity_curve[iteration]       = np.mean(np.std(fireflies, axis=0))
+            self.population_history.append(np.copy(fireflies))
 
         self.execution_time = time.time() - start_time
         return self.get_results()

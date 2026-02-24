@@ -162,6 +162,7 @@ class CuckooSearch(BaseMetaheuristic):
             self.convergence_curve[iteration]     = self.best_fitness
             self.average_fitness_curve[iteration] = np.mean(fitness)
             self.diversity_curve[iteration]       = np.mean(np.std(nests, axis=0))
+            self.population_history.append(np.copy(nests))
 
         self.execution_time = time.time() - start_time
         return self.get_results()
