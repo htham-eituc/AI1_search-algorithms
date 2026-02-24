@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from base import BaseMetaheuristic
+from ..base import BaseMetaheuristic
 
 class GA(BaseMetaheuristic):
     """
