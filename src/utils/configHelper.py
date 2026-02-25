@@ -10,6 +10,11 @@ from algorithms.biology.ABC import ABC
 from algorithms.biology.CS import CuckooSearch
 from algorithms.biology.FA import FireflyAlgorithm
 from algorithms.biology.PSO import PSO
+from algorithms.biology.ACOR import ACOR
+from algorithms.classic.local_search import HillClimbingContinuous
+from algorithms.human.tlbo import TLBO
+from algorithms.human.sfo import SFO
+from algorithms.human.ca import CA
 
 # Map problem names to their objective functions
 PROBLEM_FUNCTIONS = {
@@ -27,19 +32,47 @@ ALGORITHM_CLASSES = {
     "ABC": ABC,
     "CS": CuckooSearch,
     "FA": FireflyAlgorithm,
-    "PSO": PSO
+    "PSO": PSO,
+    "ACOR": ACOR,
+    "HC": HillClimbingContinuous,
+    "TLBO": TLBO,
+    "SFO": SFO,
+    "CA": CA
 }
 
-# Map algorithms to their test problems (one problem per algorithm for testing)
+# Map algorithms to their tested problems according to user specifications
+# 1. Sphere: HC, SA, GA, DE, GSA, PSO, TLBO
+# 2. Rastrigin: HC, SA, GA, DE, ABC, FA, CS, CA
+# 3. Rosenbrock: HC, SA, GA, DE, ABC, PSO, SFO, TLBO
 ALGORITHM_PROBLEM_MAP = {
-    "ABC": "sphere",
-    "CS": "rastrigin",
-    "FA": "rosenbrock",
-    "PSO": "sphere",
-    "GA": "rastrigin",
-    "DE": "sphere",
-    "SA": "rosenbrock",
-    "GSA": "sphere"
+    # Sphere tested with
+    "HC_sphere": ("HC", "sphere"),
+    "SA_sphere": ("SA", "sphere"),
+    "GA_sphere": ("GA", "sphere"),
+    "DE_sphere": ("DE", "sphere"),
+    "GSA_sphere": ("GSA", "sphere"),
+    "PSO_sphere": ("PSO", "sphere"),
+    "TLBO_sphere": ("TLBO", "sphere"),
+    
+    # Rastrigin tested with
+    "HC_rastrigin": ("HC", "rastrigin"),
+    "SA_rastrigin": ("SA", "rastrigin"),
+    "GA_rastrigin": ("GA", "rastrigin"),
+    "DE_rastrigin": ("DE", "rastrigin"),
+    "ABC_rastrigin": ("ABC", "rastrigin"),
+    "FA_rastrigin": ("FA", "rastrigin"),
+    "CS_rastrigin": ("CS", "rastrigin"),
+    "CA_rastrigin": ("CA", "rastrigin"),
+    
+    # Rosenbrock tested with
+    "HC_rosenbrock": ("HC", "rosenbrock"),
+    "SA_rosenbrock": ("SA", "rosenbrock"),
+    "GA_rosenbrock": ("GA", "rosenbrock"),
+    "DE_rosenbrock": ("DE", "rosenbrock"),
+    "ABC_rosenbrock": ("ABC", "rosenbrock"),
+    "PSO_rosenbrock": ("PSO", "rosenbrock"),
+    "SFO_rosenbrock": ("SFO", "rosenbrock"),
+    "TLBO_rosenbrock": ("TLBO", "rosenbrock"),
 }
 
 
@@ -182,6 +215,61 @@ def run_experiment(algo_name, problem_name, dimensions, config, verbose=True):
             c2=params.get("c2", 2.0),
             v_clamp_ratio=params.get("v_clamp_ratio", 0.2)
         )
+    elif algo_name == "ACOR":
+        algo = algo_class(
+            objective_func=objective_func,
+            pop_size=params.get("population_size", 50),
+            max_iter=params.get("max_iterations", 1000),
+            bounds=bounds,
+            dim=dimensions,
+            Ar_k=params.get("archive_size", 20),
+            xi=params.get("xi", 0.85),
+            q=params.get("q", 2)
+        )
+    elif algo_name == "HC":
+        algo = algo_class(
+            objective_func=objective_func,
+            pop_size=params.get("population_size", 10),
+            max_iter=params.get("max_iterations", 5000),
+            bounds=bounds,
+            dim=dimensions,
+            step_size=params.get("step_size", 0.5),
+            step_decay=params.get("step_decay", 0.995),
+            max_restarts=params.get("max_restarts", 10),
+            patience=params.get("patience", 30)
+        )
+    elif algo_name == "TLBO":
+        algo = algo_class(
+            objective_func=objective_func,
+            pop_size=params.get("population_size", 50),
+            max_iter=params.get("max_iterations", 1000),
+            bounds=bounds,
+            dim=dimensions
+        )
+    elif algo_name == "SFO":
+        algo = algo_class(
+            objective_func=objective_func,
+            pop_size=params.get("population_size", 50),
+            max_iter=params.get("max_iterations", 1000),
+            bounds=bounds,
+            dim=dimensions,
+            desired_speed=params.get("desired_speed", 0.8),
+            tau=params.get("tau", 0.5),
+            A=params.get("A", 2.0),
+            B=params.get("B", 0.3),
+            r_agent=params.get("r_agent", 0.5),
+            dt=params.get("dt", 0.1),
+            v_max=params.get("v_max", 2.0)
+        )
+    elif algo_name == "CA":
+        algo = algo_class(
+            objective_func=objective_func,
+            pop_size=params.get("population_size", 50),
+            max_iter=params.get("max_iterations", 1000),
+            bounds=bounds,
+            dim=dimensions,
+            alpha=params.get("alpha", 0.2)
+        )
     
     # Run solver
     results = algo.solve()
@@ -209,24 +297,30 @@ def run_all_experiments(config):
     """Run all experiments defined in configuration."""
     results_summary = []
     
-    # Only run algorithms with their assigned problems
-    for algo_name, problem_name in ALGORITHM_PROBLEM_MAP.items():
+    # Run all algorithm-problem combinations defined in ALGORITHM_PROBLEM_MAP
+    for key, (algo_name, problem_name) in ALGORITHM_PROBLEM_MAP.items():
         if algo_name not in config["algorithms"]:
+            print(f"Warning: Algorithm {algo_name} not in config, skipping {key}")
             continue
         if problem_name not in config["problems"]:
+            print(f"Warning: Problem {problem_name} not in config, skipping {key}")
             continue
         
         for dimensions in config["experiment"]["dimensions"]:
-            result = run_experiment(algo_name, problem_name, dimensions, config)
-            results_summary.append({
-                "algorithm": algo_name,
-                "problem": problem_name,
-                "dimensions": dimensions,
-                "best_fitness": result["best_fitness"],
-                "avg_fitness": result["average_fitness_curve"][-1],
-                "diversity": result["diversity_curve"][-1],
-                "execution_time": result["execution_time_seconds"]
-            })
+            try:
+                result = run_experiment(algo_name, problem_name, dimensions, config)
+                results_summary.append({
+                    "algorithm": algo_name,
+                    "problem": problem_name,
+                    "dimensions": dimensions,
+                    "best_fitness": result["best_fitness"],
+                    "avg_fitness": result["average_fitness_curve"][-1],
+                    "diversity": result["diversity_curve"][-1],
+                    "execution_time": result["execution_time_seconds"]
+                })
+            except Exception as e:
+                print(f"Error running {algo_name} on {problem_name} ({dimensions}D): {e}")
+                continue
     
     return results_summary
 

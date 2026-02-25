@@ -181,6 +181,206 @@
           "population_size": 30
         }
       }
+    },
+
+    "ACOR": {
+      "name": "Ant Colony Optimization for Continuous Domains",
+      "defaults": {
+        "max_iterations": 1000,
+        "population_size": 50,
+        "archive_size": 20,
+        "xi": 0.85,
+        "q": 2,
+        "runs": 30
+      },
+      "problem_overrides": {
+        "rastrigin": {
+          "population_size": 100,
+          "max_iterations": 2000,
+          "archive_size": 30
+        }
+      }
+    },
+
+    "HC": {
+      "name": "Hill Climbing Continuous",
+      "defaults": {
+        "max_iterations": 5000,
+        "population_size": 10,
+        "step_size": 0.5,
+        "step_decay": 0.995,
+        "max_restarts": 10,
+        "patience": 30,
+        "runs": 30
+      },
+      "problem_overrides": {
+        "rastrigin": {
+          "step_size": 0.05,
+          "max_iterations": 10000,
+          "max_restarts": 15
+        },
+        "rosenbrock": {
+          "step_size": 0.01,
+          "max_iterations": 10000,
+          "max_restarts": 15,
+          "patience": 50
+        }
+      }
+    },
+
+    "TLBO": {
+      "name": "Teaching-Learning-Based Optimization",
+      "defaults": {
+        "max_iterations": 1000,
+        "population_size": 50,
+        "runs": 30
+      },
+      "problem_overrides": {
+        "sphere": {
+          "population_size": 50,
+          "max_iterations": 1000
+        },
+        "rosenbrock": {
+          "population_size": 50,
+          "max_iterations": 2000
+        }
+      }
+    },
+
+    "SFO": {
+      "name": "Social Force Optimization",
+      "defaults": {
+        "max_iterations": 1000,
+        "population_size": 50,
+        "desired_speed": 0.8,
+        "tau": 0.5,
+        "A": 2.0,
+        "B": 0.3,
+        "r_agent": 0.5,
+        "dt": 0.1,
+        "v_max": 2.0,
+        "runs": 30
+      },
+      "problem_overrides": {
+        "rosenbrock": {
+          "population_size": 50,
+          "max_iterations": 2000,
+          "v_max": 1.0,
+          "desired_speed": 0.6
+        }
+      }
+    },
+
+    "CA": {
+      "name": "Cultural Algorithm",
+      "defaults": {
+        "max_iterations": 1000,
+        "population_size": 50,
+        "alpha": 0.2,
+        "runs": 30
+      },
+      "problem_overrides": {
+        "rastrigin": {
+          "population_size": 100,
+          "max_iterations": 2000,
+          "alpha": 0.3
+        }
+      }
+    }
+  },
+
+  "discrete_problems": {
+    "TSP": {
+      "name": "Traveling Salesman Problem",
+      "type": "combinatorial",
+      "test_files": ["test_1", "test_2", "test_3"],
+      "description": "Find shortest Hamiltonian cycle visiting all cities"
+    },
+    "SP": {
+      "name": "Shortest Path",
+      "type": "pathfinding",
+      "test_files": ["test_1", "test_2", "test_3"],
+      "description": "Find shortest path from source to destination on weighted graph"
+    }
+  },
+
+  "discrete_algorithms": {
+    "TSP": {
+      "HC_TSP": {
+        "name": "Hill Climbing 2-opt",
+        "category": "classic",
+        "max_iterations": 1000,
+        "population_size": 1,
+        "runs": 30
+      },
+      "SA_TSP": {
+        "name": "Simulated Annealing",
+        "category": "classic",
+        "max_iterations": 5000,
+        "initial_temperature": 1000.0,
+        "cooling_rate": 0.95,
+        "runs": 30
+      },
+      "GA_TSP": {
+        "name": "Genetic Algorithm",
+        "category": "evolution",
+        "max_iterations": 1000,
+        "population_size": 50,
+        "crossover_rate": 0.8,
+        "mutation_rate": 0.1,
+        "runs": 30
+      },
+      "ACO_TSP": {
+        "name": "Ant Colony Optimization",
+        "category": "biology",
+        "max_iterations": 500,
+        "population_size": 30,
+        "alpha": 1.0,
+        "beta": 2.0,
+        "evaporation_rate": 0.1,
+        "runs": 30
+      }
+    },
+    "SP": {
+      "BFS_SP": {
+        "name": "Breadth-First Search",
+        "category": "classic",
+        "runs": 1
+      },
+      "DFS_SP": {
+        "name": "Depth-First Search",
+        "category": "classic",
+        "runs": 1
+      },
+      "UCS_SP": {
+        "name": "Uniform Cost Search",
+        "category": "classic",
+        "runs": 1
+      },
+      "GREEDY_SP": {
+        "name": "Greedy Best-First Search",
+        "category": "classic",
+        "runs": 1
+      },
+      "ASTAR_SP": {
+        "name": "A* Search",
+        "category": "classic",
+        "runs": 1
+      },
+      "GA_SP": {
+        "name": "Genetic Algorithm (Adapted)",
+        "category": "evolution",
+        "max_iterations": 500,
+        "population_size": 50,
+        "runs": 30
+      },
+      "ACO_SP": {
+        "name": "Ant Colony Optimization (Adapted)",
+        "category": "biology",
+        "max_iterations": 300,
+        "population_size": 30,
+        "runs": 30
+      }
     }
   },
 
@@ -189,6 +389,8 @@
     "dimensions": [10, 30, 50],
     "metrics": ["best_fitness", "mean_fitness", "std_fitness", "convergence_iteration"],
     "save_convergence_curve": true,
-    "output_dir": "results/"
+    "output_dir": "results/",
+    "test_discrete": false,
+    "test_continuous": true
   }
 }

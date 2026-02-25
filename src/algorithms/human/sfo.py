@@ -138,7 +138,7 @@ class SFO(BaseMetaheuristic):
             self.diversity_curve[t]       = _diversity(pos)
 
         self.execution_time = time.time() - t0
-        return self
+        return self.get_results()
 
 
 # ══════════════════════════════════════════════════════════════════════════════

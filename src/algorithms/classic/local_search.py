@@ -202,7 +202,7 @@ class HillClimbingContinuous(BaseMetaheuristic):
             self.diversity_curve[t]       = step       # step size proxies diversity
 
         self.execution_time = time.time() - t0
-        return self
+        return self.get_results()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
