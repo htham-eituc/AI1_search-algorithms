@@ -1,1 +1,0 @@
-Thu vien gen test: https://github.com/ifsmirnov/jngen
