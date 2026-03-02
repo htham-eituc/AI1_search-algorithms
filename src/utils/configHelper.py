@@ -306,7 +306,11 @@ def run_all_experiments(config):
             print(f"Warning: Problem {problem_name} not in config, skipping {key}")
             continue
         
-        for dimensions in config["experiment"]["dimensions"]:
+        # Use problem-specific dimensions if available, otherwise use global dimensions
+        problem_config = config["problems"][problem_name]
+        dimensions_to_test = problem_config.get("dimensions", config["experiment"]["dimensions"])
+        
+        for dimensions in dimensions_to_test:
             try:
                 result = run_experiment(algo_name, problem_name, dimensions, config)
                 results_summary.append({

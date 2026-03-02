@@ -2,7 +2,7 @@
   "problems": {
     "sphere": {
       "name": "Sphere",
-      "dimensions": [10, 30, 50],
+      "dimensions": [2, 30, 100],
       "search_space": [-5.12, 5.12],
       "global_minimum": 0.0,
       "minimum_at": "origin",
@@ -10,7 +10,7 @@
     },
     "rastrigin": {
       "name": "Rastrigin",
-      "dimensions": [10, 30, 50],
+      "dimensions": [2, 30],
       "search_space": [-5.12, 5.12],
       "global_minimum": 0.0,
       "minimum_at": "origin",
@@ -18,7 +18,7 @@
     },
     "rosenbrock": {
       "name": "Rosenbrock",
-      "dimensions": [10, 30, 50],
+      "dimensions": [2, 30, 100],
       "search_space": [-2.048, 2.048],
       "global_minimum": 0.0,
       "minimum_at": "ones",
