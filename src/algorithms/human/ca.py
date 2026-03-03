@@ -218,7 +218,9 @@ class CA_TSP(BaseAlgorithm):
         self.alpha          = alpha
         self.influence_prob = influence_prob
         self.seed           = seed
+        # Tracking curves
         self.convergence_curve = np.zeros(max_iter)
+        self.average_fitness_curve = np.zeros(max_iter)
 
     def _tour_length(self, tour: np.ndarray) -> float:
         n = self.n_cities
@@ -296,13 +298,31 @@ class CA_TSP(BaseAlgorithm):
                 self.best_solution = pop[sorted_idx[0]].copy()
 
             self.convergence_curve[t] = self.best_fitness
+            self.average_fitness_curve[t] = float(fitness.mean())
 
         self.execution_time = time.time() - t0
         return self
 
     def get_results(self):
         results = super().get_results()
-        results.update({"convergence_curve": self.convergence_curve})
+        # Theoretical complexities
+        time_complexity = "O(max_iter * pop_size * n_cities)  # each tour evaluation O(n_cities)"
+        space_complexity = "O(pop_size * n_cities + n_cities^2)  # population + distance matrix"
+        # Estimated memory usage in bytes (rough): population + distance matrix
+        try:
+            dist_bytes = int(self.dist_matrix.nbytes)
+        except Exception:
+            dist_bytes = 0
+        est_pop_bytes = int(self.pop_size) * int(self.n_cities) * 8
+        estimated_memory_bytes = est_pop_bytes + dist_bytes
+
+        results.update({
+            "convergence_curve": self.convergence_curve,
+            "average_fitness_curve": self.average_fitness_curve,
+            "time_complexity": time_complexity,
+            "space_complexity": space_complexity,
+            "estimated_memory_bytes": estimated_memory_bytes,
+        })
         return results
 
 

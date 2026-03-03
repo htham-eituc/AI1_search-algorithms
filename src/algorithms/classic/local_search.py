@@ -249,3 +249,112 @@ if __name__ == "__main__":
     print(f"[HillClimbingContinuous] Sphere dim={DIM}")
     print(f"  Best fitness  : {r2['best_fitness']:.6e}")
     print(f"  Execution time: {r2['execution_time_seconds']*1000:.2f}ms")
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  HillClimbing_TSP — Hill Climbing for Traveling Salesman Problem (2-opt)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class HillClimbing_TSP:
+    """
+    Hill Climbing for TSP using 2-opt local search.
+    
+    Starts from a random tour and iteratively applies 2-opt swaps,
+    accepting improvements until reaching a local optimum.
+    Multiple random restarts escape local optima.
+    
+    Parameters
+    ----------
+    dist_matrix : np.ndarray
+        Symmetric distance matrix.
+    max_restarts : int
+        Number of random restarts after getting stuck.
+    max_2opt_iterations : int
+        Max 2-opt iterations per restart.
+    seed : int or None
+        Random seed.
+    """
+    
+    def __init__(self, dist_matrix, max_restarts: int = 10,
+                 max_2opt_iterations: int = 1000, seed: int = None):
+        self.dist_matrix = np.array(dist_matrix, dtype=float)
+        self.n = dist_matrix.shape[0]
+        self.max_restarts = max_restarts
+        self.max_2opt_iterations = max_2opt_iterations
+        self.seed = seed
+        
+        self.best_solution = None
+        self.best_fitness = float('inf')
+        self.execution_time = 0.0
+        self.convergence_curve = None
+    
+    def _tour_length(self, tour):
+        """Calculate total tour distance."""
+        return float(sum(
+            self.dist_matrix[tour[i], tour[(i + 1) % len(tour)]]
+            for i in range(len(tour))
+        ))
+    
+    def _two_opt(self, tour, i, k):
+        """Perform 2-opt swap: reverse segment [i:k+1]."""
+        new_tour = tour.copy()
+        new_tour[i:k + 1] = tour[i:k + 1][::-1]
+        return new_tour
+    
+    def _local_search(self, tour):
+        """Hill climbing: apply 2-opt moves until local optimum."""
+        current = tour.copy()
+        current_cost = self._tour_length(current)
+        improved = True
+        iterations = 0
+        
+        while improved and iterations < self.max_2opt_iterations:
+            improved = False
+            iterations += 1
+            
+            # Try all 2-opt moves
+            for i in range(self.n - 1):
+                for k in range(i + 2, self.n):
+                    neighbor = self._two_opt(current, i, k)
+                    neighbor_cost = self._tour_length(neighbor)
+                    
+                    if neighbor_cost < current_cost:
+                        current = neighbor
+                        current_cost = neighbor_cost
+                        improved = True
+                        break
+                if improved:
+                    break
+        
+        return current, current_cost
+    
+    def solve(self):
+        """Run Hill Climbing with random restarts."""
+        if self.seed is not None:
+            np.random.seed(self.seed)
+        
+        t0 = time.time()
+        
+        for restart in range(self.max_restarts + 1):
+            # Random initial tour
+            tour = np.random.permutation(self.n)
+            
+            # Local search
+            local_best, local_cost = self._local_search(tour)
+            
+            if local_cost < self.best_fitness:
+                self.best_fitness = local_cost
+                self.best_solution = local_best
+        
+        self.execution_time = time.time() - t0
+        return self
+    
+    def get_results(self):
+        """Return results dictionary."""
+        return {
+            "algorithm": "HillClimbing_TSP",
+            "best_fitness": float(self.best_fitness),
+            "best_solution": self.best_solution.tolist() if self.best_solution is not None else None,
+            "execution_time_seconds": self.execution_time,
+            "time_complexity": "O(max_restarts * max_2opt_iterations * n^2)  # 2-opt move is O(1), full check O(n^2)",
+            "space_complexity": "O(n + n^2)  # current tour + distance matrix",
+        }

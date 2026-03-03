@@ -106,3 +106,106 @@ class GA(BaseMetaheuristic):
             
         self.execution_time = time.time() - start_time
         return self.get_results()
+
+
+class GA_TSP:
+    """Genetic Algorithm for TSP (permutation-based).
+
+    - Representation: permutation of city indices [0..n-1]
+    - Selection: tournament
+    - Crossover: Order Crossover (OX)
+    - Mutation: swap mutation
+    - Elitism: keep best individual
+    """
+    def __init__(self, dist_matrix: np.ndarray, pop_size: int = 50, max_iter: int = 500,
+                 crossover_rate: float = 0.8, mutation_rate: float = 0.2,
+                 tournament_size: int = 3, seed: int = None):
+        self.dist_matrix = dist_matrix
+        self.n = dist_matrix.shape[0]
+        self.pop_size = pop_size
+        self.max_iter = max_iter
+        self.crossover_rate = crossover_rate
+        self.mutation_rate = mutation_rate
+        self.tournament_size = tournament_size
+        self.seed = seed
+
+        self.convergence_curve = np.zeros(max_iter)
+        self.average_fitness_curve = np.zeros(max_iter)
+        self.best_fitness = float('inf')
+        self.best_solution = None
+        self.execution_time = 0.0
+
+    def _tour_length(self, tour: np.ndarray) -> float:
+        n = self.n
+        return float(sum(self.dist_matrix[tour[i], tour[(i + 1) % n]] for i in range(n)))
+
+    def _order_crossover(self, p1: np.ndarray, p2: np.ndarray) -> np.ndarray:
+        n = self.n
+        a, b = sorted(np.random.choice(n, size=2, replace=False))
+        child = -np.ones(n, dtype=int)
+        child[a:b+1] = p1[a:b+1]
+        fill_pos = (b + 1) % n
+        p2_pos = (b + 1) % n
+        while -1 in child:
+            if p2[p2_pos] not in child:
+                child[fill_pos] = p2[p2_pos]
+                fill_pos = (fill_pos + 1) % n
+            p2_pos = (p2_pos + 1) % n
+        return child
+
+    def _mutate_swap(self, tour: np.ndarray):
+        a, b = np.random.choice(self.n, size=2, replace=False)
+        tour[a], tour[b] = tour[b], tour[a]
+
+    def _tournament_select(self, population: np.ndarray, fitness: np.ndarray) -> np.ndarray:
+        # return one parent index
+        idxs = np.random.randint(0, self.pop_size, size=self.tournament_size)
+        best = idxs[np.argmin(fitness[idxs])]
+        return population[best]
+
+    def solve(self):
+        if self.seed is not None:
+            np.random.seed(self.seed)
+
+        t0 = time.time()
+        # initialize population
+        population = np.array([np.random.permutation(self.n) for _ in range(self.pop_size)])
+        fitness = np.array([self._tour_length(p) for p in population])
+
+        best_idx = np.argmin(fitness)
+        self.best_solution = population[best_idx].copy()
+        self.best_fitness = fitness[best_idx]
+
+        for it in range(self.max_iter):
+            new_pop = []
+            # elitism: carry best forward
+            new_pop.append(self.best_solution.copy())
+
+            while len(new_pop) < self.pop_size:
+                parent1 = self._tournament_select(population, fitness)
+                parent2 = self._tournament_select(population, fitness)
+
+                if np.random.random() < self.crossover_rate:
+                    child = self._order_crossover(parent1, parent2)
+                else:
+                    child = parent1.copy()
+
+                if np.random.random() < self.mutation_rate:
+                    self._mutate_swap(child)
+
+                new_pop.append(child)
+
+            population = np.array(new_pop, dtype=int)
+            fitness = np.array([self._tour_length(p) for p in population])
+
+            # update best
+            best_idx = np.argmin(fitness)
+            if fitness[best_idx] < self.best_fitness:
+                self.best_fitness = float(fitness[best_idx])
+                self.best_solution = population[best_idx].copy()
+
+            self.convergence_curve[it] = self.best_fitness
+            self.average_fitness_curve[it] = float(fitness.mean())
+
+        self.execution_time = time.time() - t0
+        return self

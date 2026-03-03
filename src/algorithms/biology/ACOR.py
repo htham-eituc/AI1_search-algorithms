@@ -173,3 +173,205 @@ class ACOR(BaseMetaheuristic):
 
         self.execution_time = time.time() - start_time
         return self.get_results()
+
+# ==============================================================================
+#  ACO_TSP — Ant Colony Optimization for Traveling Salesman Problem
+# ==============================================================================
+
+import numpy as np
+import time
+
+
+class ACO_TSP:
+    """
+    Research-grade Ant Colony Optimization for TSP.
+    Includes:
+    - Iteration-best and global-best pheromone updates
+    - Pheromone bounds (anti-stagnation)
+    - Convergence tracking
+    - Diversity tracking
+    - Optional history for visualization
+    """
+
+    def __init__(
+        self,
+        dist_matrix: np.ndarray,
+        n_ants: int = None,
+        max_iterations: int = 500,
+        alpha: float = 1.0,
+        beta: float = 2.0,
+        rho: float = 0.1,
+        q: float = 100.0,
+        elite_weight: float = 2.0,
+        tau_min: float = 1e-6,
+        tau_max: float = 1e6,
+        seed: int = None,
+        store_history: bool = False
+    ):
+        self.dist_matrix = dist_matrix
+        self.n = dist_matrix.shape[0]
+        self.n_ants = n_ants if n_ants else self.n
+        self.max_iterations = max_iterations
+
+        self.alpha = alpha
+        self.beta = beta
+        self.rho = rho
+        self.q = q
+        self.elite_weight = elite_weight
+
+        self.tau_min = tau_min
+        self.tau_max = tau_max
+
+        self.seed = seed
+        self.store_history = store_history
+
+        # Results
+        self.best_solution = None
+        self.best_fitness = float("inf")
+        self.execution_time = 0.0
+
+        self.convergence_curve = np.zeros(max_iterations)
+        self.diversity_curve = np.zeros(max_iterations)
+
+        self.population_history = [] if store_history else None
+
+    # ---------------------------------------------------------
+    # Core Methods
+    # ---------------------------------------------------------
+
+    def _tour_length(self, tour):
+        return float(
+            sum(
+                self.dist_matrix[tour[i], tour[(i + 1) % self.n]]
+                for i in range(self.n)
+            )
+        )
+
+    def _construct_single_tour(self, pheromone, heuristic):
+        tour = []
+        visited = np.zeros(self.n, dtype=bool)
+
+        current = np.random.randint(self.n)
+        tour.append(current)
+        visited[current] = True
+
+        for _ in range(self.n - 1):
+            unvisited = np.where(~visited)[0]
+
+            probs = (
+                pheromone[current, unvisited] ** self.alpha
+                * heuristic[current, unvisited] ** self.beta
+            )
+
+            total = probs.sum()
+            if total == 0:
+                next_city = np.random.choice(unvisited)
+            else:
+                probs /= total
+                next_city = np.random.choice(unvisited, p=probs)
+
+            tour.append(next_city)
+            visited[next_city] = True
+            current = next_city
+
+        return np.array(tour)
+
+    def _construct_tours(self, pheromone, heuristic):
+        tours = []
+        fitnesses = []
+
+        for _ in range(self.n_ants):
+            tour = self._construct_single_tour(pheromone, heuristic)
+            fitness = self._tour_length(tour)
+            tours.append(tour)
+            fitnesses.append(fitness)
+
+        return np.array(tours), np.array(fitnesses)
+
+    # ---------------------------------------------------------
+    # Solve
+    # ---------------------------------------------------------
+
+    def solve(self):
+
+        if self.seed is not None:
+            np.random.seed(self.seed)
+
+        start_time = time.time()
+
+        pheromone = np.ones((self.n, self.n))
+        np.fill_diagonal(pheromone, 0)
+
+        with np.errstate(divide="ignore"):
+            heuristic = 1.0 / (self.dist_matrix + 1e-12)
+        heuristic[np.isinf(heuristic)] = 0
+        np.fill_diagonal(heuristic, 0)
+
+        for iteration in range(self.max_iterations):
+
+            tours, fitnesses = self._construct_tours(pheromone, heuristic)
+
+            # Diversity = std of tour lengths
+            self.diversity_curve[iteration] = np.std(fitnesses)
+
+            # Iteration best
+            best_idx = np.argmin(fitnesses)
+            iter_best_tour = tours[best_idx]
+            iter_best_fitness = fitnesses[best_idx]
+
+            # Update global best
+            if iter_best_fitness < self.best_fitness:
+                self.best_fitness = iter_best_fitness
+                self.best_solution = iter_best_tour.copy()
+
+            # Optional history for animation
+            if self.store_history:
+                self.population_history.append(tours.copy())
+
+            # Evaporation
+            pheromone *= (1 - self.rho)
+
+            # Iteration-best deposit
+            for i in range(self.n):
+                u = iter_best_tour[i]
+                v = iter_best_tour[(i + 1) % self.n]
+
+                deposit = self.q / iter_best_fitness
+                pheromone[u, v] += deposit
+                pheromone[v, u] += deposit
+
+            # Global-best reinforcement (elite)
+            if self.best_solution is not None:
+                for i in range(self.n):
+                    u = self.best_solution[i]
+                    v = self.best_solution[(i + 1) % self.n]
+
+                    deposit = self.elite_weight * self.q / self.best_fitness
+                    pheromone[u, v] += deposit
+                    pheromone[v, u] += deposit
+
+            # Clamp pheromone (prevents stagnation)
+            pheromone = np.clip(pheromone, self.tau_min, self.tau_max)
+
+            self.convergence_curve[iteration] = self.best_fitness
+
+        self.execution_time = time.time() - start_time
+        return self
+
+    # ---------------------------------------------------------
+    # Results
+    # ---------------------------------------------------------
+
+    def get_results(self):
+        return {
+            "algorithm": "ACO_TSP",
+            "best_fitness": float(self.best_fitness),
+            "best_solution": self.best_solution.tolist()
+            if self.best_solution is not None else None,
+            "execution_time_seconds": self.execution_time,
+            "convergence_curve": self.convergence_curve,
+            "diversity_curve": self.diversity_curve,
+            "population_history": self.population_history,
+            "time_complexity": "O(max_iter * n_ants * n^2)",
+            "space_complexity": "O(n^2)"
+        }

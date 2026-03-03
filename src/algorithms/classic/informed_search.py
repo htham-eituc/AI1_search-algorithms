@@ -205,3 +205,131 @@ if __name__ == "__main__":
         print(f"  [{r['algorithm']:16s}] found={found} | "
               f"path={r['path_length']} | nodes={r['nodes_expanded']} | "
               f"time={r['execution_time_seconds']*1000:.2f}ms")
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  A_STAR_TSP — A* Search for Traveling Salesman Problem
+# ══════════════════════════════════════════════════════════════════════════════
+
+class A_STAR_TSP:
+    """
+    A* Search for TSP using bitmask state representation.
+    
+    State = (current_city, visited_bitmask) where visited_bitmask is a
+    bitmask indicating which cities have been visited.
+    
+    Heuristic: minimum distance to nearest unvisited city (admissible).
+    
+    WARNING: Only suitable for SMALL instances (n <= 20) due to
+    exponential state space. For n=20, state space is ~20 * 2^20 = 20M states.
+    
+    Parameters
+    ----------
+    dist_matrix : np.ndarray
+        Symmetric distance matrix.
+    seed : int or None
+        Random seed.
+    """
+    
+    def __init__(self, dist_matrix, seed: int = None):
+        import numpy as np
+        self.dist_matrix = np.array(dist_matrix, dtype=float)
+        self.n = dist_matrix.shape[0]
+        self.seed = seed
+        
+        self.best_solution = None
+        self.best_fitness = float('inf')
+        self.execution_time = 0.0
+        self.nodes_expanded = 0
+    
+    def _tour_length(self, tour):
+        """Calculate length of a complete tour."""
+        return float(sum(
+            self.dist_matrix[tour[i], tour[(i + 1) % len(tour)]]
+            for i in range(len(tour))
+        ))
+    
+    def _heuristic(self, current, visited_mask):
+        """
+        Admissible heuristic: min distance from current to any unvisited,
+        plus a lower bound for connecting remaining cities.
+        
+        Simple version: just min edge to unvisited.
+        """
+        unvisited = [i for i in range(self.n) if not (visited_mask & (1 << i))]
+        if not unvisited:
+            return 0.0
+        return float(min(self.dist_matrix[current, u] for u in unvisited))
+    
+    def solve(self):
+        import numpy as np
+        import heapq
+        
+        if self.seed is not None:
+            np.random.seed(self.seed)
+        
+        t0 = time.time()
+        
+        # Initial state: start at city 0, only city 0 visited
+        start_mask = 1 << 0
+        start_state = (0, start_mask)
+        g_cost = {start_state: 0.0}
+        h_val = self._heuristic(0, start_mask)
+        heap = [(h_val, 0, start_state)]  # (f=g+h, g, state)
+        visited_states = set()
+        parent = {}
+        
+        while heap:
+            f, g, state = heapq.heappop(heap)
+            current, visited_mask = state
+            
+            if state in visited_states:
+                continue
+            visited_states.add(state)
+            self.nodes_expanded += 1
+            
+            # Goal: all cities visited
+            if visited_mask == (1 << self.n) - 1:
+                # Complete tour found
+                cost = g + self.dist_matrix[current, 0]  # close the tour
+                if cost < self.best_fitness:
+                    self.best_fitness = cost
+                    # Reconstruct tour from parent pointers
+                    tour = [0]
+                    s = state
+                    while s in parent:
+                        s = parent[s]
+                        tour.append(s[0])
+                    tour.reverse()
+                    self.best_solution = tour
+                continue
+            
+            # Expand: visit each unvisited city
+            for next_city in range(self.n):
+                if visited_mask & (1 << next_city):
+                    continue  # already visited
+                
+                new_mask = visited_mask | (1 << next_city)
+                new_state = (next_city, new_mask)
+                new_g = g + self.dist_matrix[current, next_city]
+                
+                if new_state not in g_cost or new_g < g_cost[new_state]:
+                    g_cost[new_state] = new_g
+                    h = self._heuristic(next_city, new_mask)
+                    f = new_g + h
+                    heapq.heappush(heap, (f, new_g, new_state))
+                    parent[new_state] = state
+        
+        self.execution_time = time.time() - t0
+        if self.best_solution is None:
+            self.best_fitness = float('inf')
+        return self
+    
+    def get_results(self):
+        return {
+            "algorithm": "A*_TSP",
+            "best_fitness": float(self.best_fitness),
+            "best_solution": self.best_solution,
+            "execution_time_seconds": self.execution_time,
+            "nodes_expanded": self.nodes_expanded,
+            "note": "Optimal but only practical for n <= 20. Uses bitmask state representation.",
+        }

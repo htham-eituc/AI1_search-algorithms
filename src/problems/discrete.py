@@ -19,17 +19,7 @@ from pathlib import Path
 #  Traveling Salesman Problem (TSP)
 # ==============================================================================
 
-class TSPProblem:
-    """
-    Traveling Salesman Problem loader and evaluator.
-    
-    File format:
-        Line 1: n (number of cities)
-        Lines 2+: city1 city2 distance
-    
-    Creates a complete distance matrix from edge list.
-    """
-    
+class TSPProblem:    
     def __init__(self, filepath):
         """Load TSP instance from file."""
         self.filepath = Path(filepath)
@@ -42,22 +32,27 @@ class TSPProblem:
         """Parse TSP file and build distance matrix."""
         with open(self.filepath, 'r') as f:
             lines = [line.strip() for line in f if line.strip()]
-        
-        # First line: number of cities
-        self.n_cities = int(lines[0])
-        
-        # Initialize distance matrix (symmetric)
+
+        if not lines:
+            raise ValueError(f"Empty TSP file: {self.filepath}")
+
+        # First line may be either: "n" or "n m" where m is number of edges
+        header = lines[0].split()
+        self.n_cities = int(header[0])
+
+        # Initialize distance matrix (symmetric) with infinities and zero diagonal
         self.distance_matrix = np.full((self.n_cities, self.n_cities), np.inf)
         np.fill_diagonal(self.distance_matrix, 0)
-        
-        # Parse edges: city1 city2 distance
+
+        # Subsequent lines are edges: u v weight (1-indexed in files)
         for line in lines[1:]:
             parts = line.split()
             if len(parts) < 3:
                 continue
-            city1, city2, dist = int(parts[0]) - 1, int(parts[1]) - 1, float(parts[2])
-            self.distance_matrix[city1, city2] = dist
-            self.distance_matrix[city2, city1] = dist  # Symmetric
+            u, v, w = int(parts[0]) - 1, int(parts[1]) - 1, float(parts[2])
+            if 0 <= u < self.n_cities and 0 <= v < self.n_cities:
+                self.distance_matrix[u, v] = w
+                self.distance_matrix[v, u] = w
     
     def evaluate_tour(self, tour):
         """
@@ -117,59 +112,91 @@ def load_tsp(filepath):
 
 class SPProblem:
     """
-    Shortest Path Problem on general weighted graph.
-    
-    File format:
-        Line 1: n_nodes start end (start and end nodes)
-        Lines 2+: node1 node2 weight
-    
-    Builds adjacency matrix from edge list.
+    Shortest Path Problem defined on a square grid (maze).
+
+    The input file format is specific to the tests under ``tests/TSP/SP``:
+
+        Line 1: n                     # size of the grid (n x n)
+        Lines 2..n+1: grid rows      # each row has n integers (0=open, 1=wall)
+
+    Start and goal locations are hardcoded for this assignment:
+        start = (0, 1)
+        goal  = (n-1, n-2)
+
+    The class exposes ``grid`` as a NumPy array and ``start_node`` / 
+    ``end_node`` as (row, col) tuples so that the various graph-search 
+    algorithms in ``algorithms/classic`` can operate directly on it.
     """
-    
+
     def __init__(self, filepath):
-        """Load SP instance from file."""
+        """Load a grid-based shortest path instance from file."""
         self.filepath = Path(filepath)
+        self.n = 0              # grid dimension
+        self.grid = None        # 2D numpy array of 0/1 values
+        self.start_node = None  # tuple (row, col)
+        self.end_node = None
+        # keep n_nodes for backwards compatibility (number of cells)
         self.n_nodes = 0
-        self.start_node = 0
-        self.end_node = 0
-        self.adjacency_matrix = None
-        self.best_known_distance = None
         self._load_from_file()
-    
+
     def _load_from_file(self):
-        """Parse SP file and build adjacency matrix."""
-        with open(self.filepath, 'r') as f:
+        """Parse the maze file and populate grid, start/end nodes."""
+        with open(self.filepath, "r") as f:
             lines = [line.strip() for line in f if line.strip()]
-        
-        # First line: n_nodes n_edges (or n_nodes start end)
-        # Handle both formats: if 3 values, assume n_nodes start end; if 2 values, assume n_nodes n_edges
-        parts = lines[0].split()
-        self.n_nodes = int(parts[0])
-        
-        if len(parts) == 3:
-            # Format: n_nodes start end
-            self.start_node = int(parts[1]) - 1  # Convert to 0-indexed
-            self.end_node = int(parts[2]) - 1
-        else:
-            # Format: n_nodes n_edges (default to node 1 to node n)
-            self.start_node = 0
-            self.end_node = self.n_nodes - 1
-        
-        # Initialize adjacency matrix
-        self.adjacency_matrix = np.full((self.n_nodes, self.n_nodes), np.inf)
-        np.fill_diagonal(self.adjacency_matrix, 0)
-        
-        # Parse edges: node1 node2 weight
-        for line in lines[1:]:
+
+        if not lines:
+            raise ValueError(f"Empty file: {self.filepath}")
+
+        self.n = int(lines[0].split()[0])
+        # read exactly n subsequent lines
+        if len(lines) < 1 + self.n:
+            raise ValueError(f"Expected {self.n} grid rows, got {len(lines)-1}")
+
+        grid_rows = []
+        for idx, line in enumerate(lines[1 : 1 + self.n], start=1):
             parts = line.split()
-            if len(parts) < 3:
-                continue
-            node1, node2, weight = int(parts[0]) - 1, int(parts[1]) - 1, float(parts[2])
-            
-            # Ensure nodes are within bounds
-            if 0 <= node1 < self.n_nodes and 0 <= node2 < self.n_nodes:
-                self.adjacency_matrix[node1, node2] = weight
-                self.adjacency_matrix[node2, node1] = weight  # Assume undirected
+            if len(parts) != self.n:
+                raise ValueError(
+                    f"Line {idx+1} must contain {self.n} values, found {len(parts)}"
+                )
+            grid_rows.append([int(x) for x in parts])
+
+        self.grid = np.array(grid_rows, dtype=int)
+        self.n_nodes = self.n * self.n
+
+        # fixed start and end as per problem statement
+        self.start_node = (0, 1)
+        self.end_node = (self.n - 1, self.n - 2)
+
+    def evaluate_path(self, path):
+        """Compute cost of a path represented as a sequence of (row,col) tuples.
+
+        Distance is simply the number of valid moves; invalid steps or
+        traversing a wall returns ``np.inf``.
+        """
+        if not path or len(path) < 2:
+            return np.inf
+
+        dist = 0
+        for (r1, c1), (r2, c2) in zip(path, path[1:]):
+            # ensure neighboring cells
+            if abs(r1 - r2) + abs(c1 - c2) != 1:
+                return np.inf
+            # ensure target cell is open
+            if self.grid[r2, c2] != 0:
+                return np.inf
+            dist += 1
+        return dist
+
+    def evaluate_population(self, population):
+        """Vectorized evaluation of multiple paths.
+
+        ``population`` should be an iterable of path lists/arrays.
+        """
+        fitness = np.zeros(len(population))
+        for i, path in enumerate(population):
+            fitness[i] = self.evaluate_path(path)
+        return fitness
     
     def evaluate_path(self, path):
         """
@@ -235,8 +262,12 @@ def get_tsp_problem(test_name="test_1"):
 
 
 def get_sp_problem(test_name="test_1"):
-    """Get an SP problem by name (e.g., 'test_1')."""
-    tests_dir = Path(__file__).parent.parent / "tests" / "SP"
+    """Get an SP problem by name from the test suite.
+
+    The SP instances are currently stored under ``tests/TSP/SP``
+    (a relic of earlier structuring).
+    """
+    tests_dir = Path(__file__).parent.parent / "tests" / "TSP" / "SP"
     filepath = tests_dir / f"{test_name}.txt"
     return load_sp(filepath)
 

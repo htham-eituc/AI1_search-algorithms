@@ -11,6 +11,7 @@ Problem: 2-D grid pathfinding (0 = open, 1 = wall).
 
 import time
 import heapq
+import numpy as np
 from collections import deque
 import sys
 import os
@@ -227,3 +228,171 @@ if __name__ == "__main__":
         print(f"  [{r['algorithm']:4s}] found={found} | "
               f"path={r['path_length']} | nodes={r['nodes_expanded']} | "
               f"time={r['execution_time_seconds']*1000:.2f}ms")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BFS_TSP & DFS_TSP — Uninformed Search for Traveling Salesman Problem
+# ══════════════════════════════════════════════════════════════════════════════
+
+class BFS_TSP:
+    """
+    Breadth-First Search for TSP (branch-and-bound style).
+    
+    WARNING: Only suitable for VERY small instances (n <= 10) due to 
+    exponential state space growth. Explores partial tours level-by-level,
+    pruning branches that cannot lead to a better solution.
+    
+    Not practical but demonstrates exhaustive search bounds.
+    """
+    
+    def __init__(self, dist_matrix, max_depth: int = None, seed: int = None):
+        self.dist_matrix = dist_matrix
+        self.n = dist_matrix.shape[0]
+        self.max_depth = max_depth or self.n
+        self.seed = seed
+        
+        self.best_solution = None
+        self.best_fitness = float('inf')
+        self.execution_time = 0.0
+        self.nodes_expanded = 0
+    
+    def _tour_length(self, tour):
+        return float(sum(
+            self.dist_matrix[tour[i], tour[(i + 1) % len(tour)]] 
+            for i in range(len(tour))
+        ))
+    
+    def solve(self):
+        import numpy as np
+        if self.seed is not None:
+            np.random.seed(self.seed)
+        
+        t0 = time.time()
+        
+        # BFS: level-by-level exploration of partial tours
+        queue = deque()
+        for start in range(self.n):
+            queue.append(([start], {start}))
+        
+        while queue:
+            tour, visited = queue.popleft()
+            self.nodes_expanded += 1
+            
+            # Pruning: if partial tour cost exceeds best, skip
+            partial_cost = sum(
+                self.dist_matrix[tour[i], tour[i + 1]] 
+                for i in range(len(tour) - 1)
+            )
+            if partial_cost >= self.best_fitness:
+                continue
+            
+            # Goal: complete tour
+            if len(tour) == self.n:
+                total_cost = self._tour_length(tour)
+                if total_cost < self.best_fitness:
+                    self.best_fitness = total_cost
+                    self.best_solution = tuple(tour)
+                continue
+            
+            # Expand: add unvisited city
+            last = tour[-1]
+            for next_city in range(self.n):
+                if next_city not in visited:
+                    new_tour = tour + [next_city]
+                    new_visited = visited | {next_city}
+                    queue.append((new_tour, new_visited))
+        
+        self.execution_time = time.time() - t0
+        if self.best_solution is None:
+            self.best_fitness = float('inf')
+        return self
+    
+    def get_results(self):
+        return {
+            "algorithm": "BFS_TSP",
+            "best_fitness": float(self.best_fitness),
+            "best_solution": list(self.best_solution) if self.best_solution else None,
+            "execution_time_seconds": self.execution_time,
+            "nodes_expanded": self.nodes_expanded,
+            "note": "Only suitable for n <= 10. Exponential complexity O(n!)",
+        }
+
+
+class DFS_TSP:
+    """
+    Depth-First Search for TSP (branch-and-bound style).
+    
+    WARNING: Only suitable for VERY small instances (n <= 10).
+    Explores tours depth-first, pruning branches that exceed the current best.
+    
+    Not practical but exhaustive; demonstrates DFS ordering vs. BFS.
+    """
+    
+    def __init__(self, dist_matrix, max_depth: int = None, seed: int = None):
+        self.dist_matrix = dist_matrix
+        self.n = dist_matrix.shape[0]
+        self.max_depth = max_depth or self.n
+        self.seed = seed
+        
+        self.best_solution = None
+        self.best_fitness = float('inf')
+        self.execution_time = 0.0
+        self.nodes_expanded = 0
+    
+    def _tour_length(self, tour):
+        return float(sum(
+            self.dist_matrix[tour[i], tour[(i + 1) % len(tour)]] 
+            for i in range(len(tour))
+        ))
+    
+    def _dfs(self, tour, visited):
+        """Recursive DFS with branch-and-bound."""
+        self.nodes_expanded += 1
+        
+        # Pruning
+        partial_cost = sum(
+            self.dist_matrix[tour[i], tour[i + 1]] 
+            for i in range(len(tour) - 1)
+        )
+        if partial_cost >= self.best_fitness:
+            return
+        
+        # Goal
+        if len(tour) == self.n:
+            total_cost = self._tour_length(tour)
+            if total_cost < self.best_fitness:
+                self.best_fitness = total_cost
+                self.best_solution = tuple(tour)
+            return
+        
+        # Expand
+        last = tour[-1]
+        for next_city in range(self.n):
+            if next_city not in visited:
+                self._dfs(tour + [next_city], visited | {next_city})
+    
+    def solve(self):
+        import numpy as np
+        if self.seed is not None:
+            np.random.seed(self.seed)
+        
+        t0 = time.time()
+        
+        # Start DFS from each city
+        for start in range(self.n):
+            self._dfs([start], {start})
+        
+        self.execution_time = time.time() - t0
+        if self.best_solution is None:
+            self.best_fitness = float('inf')
+        return self
+    
+    def get_results(self):
+        return {
+            "algorithm": "DFS_TSP",
+            "best_fitness": float(self.best_fitness),
+            "best_solution": list(self.best_solution) if self.best_solution else None,
+            "execution_time_seconds": self.execution_time,
+            "nodes_expanded": self.nodes_expanded,
+            "note": "Only suitable for n <= 10. Exponential complexity O(n!)",
+        }
