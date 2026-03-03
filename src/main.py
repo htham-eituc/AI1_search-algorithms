@@ -46,7 +46,7 @@ Testing algorithms on benchmark functions:
     # ========================================================================
     
     if config["experiment"].get("test_continuous", True):
-        # Run all experiments
+        # Run all experiments with true parallelism using multiprocessing
         results_summary = run_all_experiments(config)
         
         # Print summary

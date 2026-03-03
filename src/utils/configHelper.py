@@ -1,6 +1,7 @@
 import json
 import os
 import numpy as np
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from problems.continuous import sphere, rastrigin, rosenbrock
 from algorithms.evolution.DE import DE
 from algorithms.evolution.GA import GA
@@ -293,38 +294,54 @@ def run_experiment(algo_name, problem_name, dimensions, config, verbose=True):
     return results
 
 
-def run_all_experiments(config):
-    """Run all experiments defined in configuration."""
+def run_single_experiment_worker(args):
+    """Module-level worker function for multiprocessing (must be picklable)."""
+    algo_name, problem_name, dimensions, config = args
+    try:
+        result = run_experiment(algo_name, problem_name, dimensions, config, verbose=False)
+        experiment_data = {
+            "algorithm": algo_name,
+            "problem": problem_name,
+            "dimensions": dimensions,
+            "best_fitness": result["best_fitness"],
+            "avg_fitness": result["average_fitness_curve"][-1],
+            "diversity": result["diversity_curve"][-1],
+            "execution_time": result["execution_time_seconds"]
+        }
+        return experiment_data
+    except Exception as e:
+        return None
+
+
+def run_all_experiments(config, max_workers=None):
+    """Run all experiments defined in configuration using multiprocessing."""
+    if max_workers is None:
+        max_workers = os.cpu_count()
+    
     results_summary = []
     
-    # Run all algorithm-problem combinations defined in ALGORITHM_PROBLEM_MAP
+    # Collect all tasks
+    tasks = []
     for key, (algo_name, problem_name) in ALGORITHM_PROBLEM_MAP.items():
-        if algo_name not in config["algorithms"]:
-            print(f"Warning: Algorithm {algo_name} not in config, skipping {key}")
-            continue
-        if problem_name not in config["problems"]:
-            print(f"Warning: Problem {problem_name} not in config, skipping {key}")
+        if algo_name not in config["algorithms"] or problem_name not in config["problems"]:
             continue
         
-        # Use problem-specific dimensions if available, otherwise use global dimensions
         problem_config = config["problems"][problem_name]
         dimensions_to_test = problem_config.get("dimensions", config["experiment"]["dimensions"])
         
         for dimensions in dimensions_to_test:
-            try:
-                result = run_experiment(algo_name, problem_name, dimensions, config)
-                results_summary.append({
-                    "algorithm": algo_name,
-                    "problem": problem_name,
-                    "dimensions": dimensions,
-                    "best_fitness": result["best_fitness"],
-                    "avg_fitness": result["average_fitness_curve"][-1],
-                    "diversity": result["diversity_curve"][-1],
-                    "execution_time": result["execution_time_seconds"]
-                })
-            except Exception as e:
-                print(f"Error running {algo_name} on {problem_name} ({dimensions}D): {e}")
-                continue
+            tasks.append((algo_name, problem_name, dimensions, config))
+    
+    # Run experiments in parallel using processes
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(run_single_experiment_worker, task) for task in tasks]
+        
+        completed = 0
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                results_summary.append(result)
+            completed += 1
     
     return results_summary
 
