@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from ..base import BaseMetaheuristic
+from ..base import BaseMetaheuristic, BaseAlgorithm
 
 class GA(BaseMetaheuristic):
     """
@@ -209,3 +209,139 @@ class GA_TSP:
 
         self.execution_time = time.time() - t0
         return self
+
+
+# ==============================================================================
+#  GA_Grid — Genetic Algorithm for Grid Pathfinding
+# ==============================================================================
+
+class GA_Grid(BaseAlgorithm):
+    """
+    Genetic Algorithm for grid-based shortest path (inherits from BaseAlgorithm).
+    
+    Population of variable-length paths from start to goal.
+    Uses mutation and elitism to explore the path space.
+    """
+
+    def __init__(self, grid, start_node, end_node, pop_size=30, max_iter=100,
+                 mutation_rate=0.2, seed=None):
+        super().__init__("GA_Grid")
+        self.grid = np.array(grid, dtype=int)
+        self.n, self.m = grid.shape
+        self.start_node = start_node
+        self.end_node = end_node
+        self.pop_size = pop_size
+        self.max_iter = max_iter
+        self.mutation_rate = mutation_rate
+        self.seed = seed
+
+        self.convergence_curve = np.zeros(max_iter)
+        self.average_fitness_curve = np.zeros(max_iter)
+
+    def _get_neighbors(self, cell):
+        """Return valid neighboring cells (4-directional)."""
+        r, c = cell
+        neighbors = []
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < self.n and 0 <= nc < self.m and self.grid[nr, nc] == 0:
+                neighbors.append((nr, nc))
+        return neighbors
+
+    def _generate_random_path(self):
+        """Generate random path using greedy nearest neighbor to goal."""
+        path = [self.start_node]
+        current = self.start_node
+        visited = {self.start_node}
+        max_steps = self.n * self.m
+
+        for _ in range(max_steps):
+            if current == self.end_node:
+                break
+
+            neighbors = [n for n in self._get_neighbors(current) if n not in visited]
+            if not neighbors:
+                break
+
+            # Prefer neighbors closer to goal (Manhattan distance)
+            next_cell = min(neighbors,
+                           key=lambda n: abs(n[0] - self.end_node[0]) + abs(n[1] - self.end_node[1]))
+            path.append(next_cell)
+            visited.add(next_cell)
+            current = next_cell
+
+        return path if current == self.end_node else None
+
+    def _path_length(self, path):
+        """Return path length (number of steps)."""
+        return float(len(path) - 1) if path else float('inf')
+
+    def _mutate(self, path):
+        """Mutate path: swap adjacent cells if valid."""
+        if len(path) < 3:
+            return path.copy()
+
+        new_path = path.copy()
+        idx = np.random.randint(1, len(path) - 1)
+
+        neighbors = self._get_neighbors(new_path[idx - 1])
+        if new_path[idx + 1] in neighbors:
+            new_path[idx], new_path[idx + 1] = new_path[idx + 1], new_path[idx]
+
+        return new_path
+
+    def solve(self):
+        """Run Genetic Algorithm for grid pathfinding."""
+        if self.seed is not None:
+            np.random.seed(self.seed)
+
+        t0 = time.time()
+
+        # Initialize population with random paths
+        population = []
+        for _ in range(self.pop_size):
+            path = self._generate_random_path()
+            if path:
+                population.append(path)
+
+        if not population:
+            self.execution_time = time.time() - t0
+            return self
+
+        for iteration in range(self.max_iter):
+            fitnesses = np.array([self._path_length(p) for p in population])
+
+            best_idx = np.argmin(fitnesses)
+            if fitnesses[best_idx] < self.best_fitness:
+                self.best_fitness = fitnesses[best_idx]
+                self.best_solution = population[best_idx]
+
+            self.convergence_curve[iteration] = self.best_fitness
+            self.average_fitness_curve[iteration] = float(fitnesses.mean())
+
+            # Elitism: keep best
+            new_population = [population[best_idx]]
+
+            while len(new_population) < self.pop_size:
+                if np.random.random() < self.mutation_rate:
+                    child = self._mutate(population[best_idx])
+                else:
+                    child = population[best_idx].copy()
+
+                new_population.append(child)
+
+            population = new_population
+
+        self.execution_time = time.time() - t0
+        return self
+
+    def get_results(self):
+        """Return results with convergence curves for grid pathfinding."""
+        return {
+            "algorithm": self.name,
+            "best_fitness": float(self.best_fitness),
+            "best_solution": self.best_solution,
+            "execution_time_seconds": self.execution_time,
+            "convergence_curve": self.convergence_curve,
+            "average_fitness_curve": self.average_fitness_curve,
+        }

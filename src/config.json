@@ -23,6 +23,14 @@
       "global_minimum": 0.0,
       "minimum_at": "ones",
       "tolerance": 1e-4
+    },
+    "grid": {
+      "name": "Grid Shortest Path (SP)",
+      "type": "discrete",
+      "test_dir": "tests/SP",
+      "test_pattern": "test_*.txt",
+      "description": "Find shortest path in grid maze from S to E",
+      "metrics": ["best_fitness", "nodes_expanded", "execution_time"]
     }
   },
 
@@ -286,6 +294,94 @@
           "alpha": 0.3
         }
       }
+    },
+
+    "BFS": {
+      "name": "Breadth-First Search",
+      "defaults": {
+        "runs": 1
+      },
+      "problem_overrides": {
+        "grid": {}
+      }
+    },
+
+    "DFS": {
+      "name": "Depth-First Search",
+      "defaults": {
+        "runs": 1
+      },
+      "problem_overrides": {
+        "grid": {}
+      }
+    },
+
+    "UCS": {
+      "name": "Uniform Cost Search",
+      "defaults": {
+        "runs": 1
+      },
+      "problem_overrides": {
+        "grid": {}
+      }
+    },
+
+    "Greedy": {
+      "name": "Greedy Best-First Search",
+      "defaults": {
+        "runs": 1
+      },
+      "problem_overrides": {
+        "grid": {}
+      }
+    },
+
+    "A*": {
+      "name": "A* Search",
+      "defaults": {
+        "runs": 1
+      },
+      "problem_overrides": {
+        "grid": {}
+      }
+    },
+
+    "GA_Grid": {
+      "name": "Genetic Algorithm for Grid",
+      "defaults": {
+        "max_iterations": 100,
+        "population_size": 30,
+        "mutation_rate": 0.2,
+        "runs": 5
+      },
+      "problem_overrides": {
+        "grid": {
+          "pop_size": 30,
+          "max_iter": 100,
+          "mutation_rate": 0.2
+        }
+      }
+    },
+
+    "ACO_Grid": {
+      "name": "Ant Colony Optimization for Grid",
+      "defaults": {
+        "max_iterations": 100,
+        "n_ants": 20,
+        "alpha": 0.5,
+        "beta": 1.5,
+        "rho": 0.1,
+        "q": 100.0,
+        "runs": 5
+      },
+      "problem_overrides": {
+        "grid": {
+          "n_ants": 20,
+          "max_iterations": 100,
+          "alpha": 0.5,
+          "beta": 1.5
+        }
+      }
     }
   },
 
@@ -295,7 +391,8 @@
     "metrics": ["best_fitness", "mean_fitness", "std_fitness", "convergence_iteration"],
     "save_convergence_curve": true,
     "output_dir": "results/",
-    "test_discrete": false,
-    "test_continuous": true
+    "test_discrete": true,
+    "test_continuous": true,
+    "discrete_algorithms": ["BFS", "DFS", "UCS", "Greedy", "A*", "GA_Grid", "ACO_Grid"]
   }
 }

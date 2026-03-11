@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from ..base import BaseMetaheuristic
+from ..base import BaseMetaheuristic, BaseAlgorithm
 
 
 class ACOR(BaseMetaheuristic):
@@ -374,4 +374,255 @@ class ACO_TSP:
             "population_history": self.population_history,
             "time_complexity": "O(max_iter * n_ants * n^2)",
             "space_complexity": "O(n^2)"
+        }
+
+
+# ==============================================================================
+#  ACO_Grid — Ant Colony Optimization for Grid Pathfinding
+# ==============================================================================
+
+class ACO_Grid(BaseAlgorithm):
+    """
+    Research-grade Ant Colony Optimization for grid pathfinding.
+
+    Improvements:
+    - Edge pheromone model
+    - Loop prevention
+    - Elitist global reinforcement
+    - Adaptive evaporation
+    - Diversity tracking
+    """
+
+    def __init__(
+        self,
+        grid,
+        start_node,
+        end_node,
+        n_ants=30,
+        max_iterations=150,
+        alpha=1.0,
+        beta=3.0,
+        rho=0.15,
+        q=100.0,
+        elite_weight=2.0,
+        seed=None
+    ):
+        super().__init__("ACO_Grid")
+
+        self.grid = np.array(grid)
+        self.n, self.m = grid.shape
+
+        self.start_node = start_node
+        self.end_node = end_node
+
+        self.n_ants = n_ants
+        self.max_iterations = max_iterations
+
+        self.alpha = alpha
+        self.beta = beta
+        self.rho = rho
+        self.q = q
+        self.elite_weight = elite_weight
+
+        self.seed = seed
+
+        self.best_solution = None
+        self.best_fitness = float("inf")
+
+        self.execution_time = 0.0
+
+        self.convergence_curve = np.zeros(max_iterations)
+        self.diversity_curve = np.zeros(max_iterations)
+
+    # ---------------------------------------------------------
+    # Utility
+    # ---------------------------------------------------------
+
+    def _heuristic(self, cell):
+        """Manhattan distance heuristic."""
+        return abs(cell[0] - self.end_node[0]) + abs(cell[1] - self.end_node[1])
+
+    def _get_neighbors(self, cell):
+        r, c = cell
+        neighbors = []
+
+        directions = [(-1,0),(1,0),(0,-1),(0,1)]
+
+        for dr, dc in directions:
+            nr = r + dr
+            nc = c + dc
+
+            if 0 <= nr < self.n and 0 <= nc < self.m:
+                if self.grid[nr, nc] == 0:
+                    neighbors.append((nr, nc))
+
+        return neighbors
+
+    def _path_length(self, path):
+        return float(len(path)-1) if path else float("inf")
+
+    # ---------------------------------------------------------
+    # Ant path construction
+    # ---------------------------------------------------------
+
+    def _construct_path(self, pheromone):
+
+        visited = set()
+        path = [self.start_node]
+
+        current = self.start_node
+        visited.add(current)
+
+        max_steps = self.n * self.m
+
+        for _ in range(max_steps):
+
+            if current == self.end_node:
+                return path
+
+            neighbors = self._get_neighbors(current)
+
+            neighbors = [n for n in neighbors if n not in visited]
+
+            if not neighbors:
+                return None
+
+            probs = []
+
+            for neighbor in neighbors:
+
+                tau = pheromone[current][neighbor]
+
+                eta = 1.0 / (1.0 + self._heuristic(neighbor))
+
+                probs.append((tau ** self.alpha) * (eta ** self.beta))
+
+            probs = np.array(probs, dtype=float)
+
+            total = probs.sum()
+
+            if total == 0:
+                next_cell = neighbors[np.random.randint(len(neighbors))]
+            else:
+                probs /= total
+                next_cell = neighbors[np.random.choice(len(neighbors), p=probs)]
+
+            path.append(next_cell)
+            visited.add(next_cell)
+            current = next_cell
+
+        return None
+
+    # ---------------------------------------------------------
+    # Solve
+    # ---------------------------------------------------------
+
+    def solve(self):
+
+        if self.seed is not None:
+            np.random.seed(self.seed)
+
+        start_time = time.time()
+
+        # Edge pheromone dictionary
+        pheromone = {}
+
+        for r in range(self.n):
+            for c in range(self.m):
+                if self.grid[r,c] == 0:
+                    cell = (r,c)
+                    pheromone[cell] = {}
+                    for n in self._get_neighbors(cell):
+                        pheromone[cell][n] = 0.1
+
+        for iteration in range(self.max_iterations):
+
+            paths = []
+            fitnesses = []
+
+            # -------------------------
+            # Construct solutions
+            # -------------------------
+
+            for _ in range(self.n_ants):
+
+                path = self._construct_path(pheromone)
+
+                if path is not None:
+                    length = self._path_length(path)
+                    paths.append(path)
+                    fitnesses.append(length)
+
+            if not paths:
+                continue
+
+            fitnesses = np.array(fitnesses)
+
+            self.diversity_curve[iteration] = np.std(fitnesses)
+
+            best_idx = np.argmin(fitnesses)
+
+            iter_best_path = paths[best_idx]
+            iter_best_fitness = fitnesses[best_idx]
+
+            # Update global best
+            if iter_best_fitness < self.best_fitness:
+                self.best_fitness = iter_best_fitness
+                self.best_solution = iter_best_path.copy()
+
+            # -------------------------
+            # Evaporation
+            # -------------------------
+
+            for u in pheromone:
+                for v in pheromone[u]:
+                    pheromone[u][v] *= (1 - self.rho)
+
+            # -------------------------
+            # Iteration-best deposit
+            # -------------------------
+
+            deposit = self.q / iter_best_fitness
+
+            for i in range(len(iter_best_path)-1):
+                u = iter_best_path[i]
+                v = iter_best_path[i+1]
+
+                pheromone[u][v] += deposit
+
+            # -------------------------
+            # Global-best reinforcement
+            # -------------------------
+
+            if self.best_solution is not None:
+
+                deposit = self.elite_weight * self.q / self.best_fitness
+
+                for i in range(len(self.best_solution)-1):
+                    u = self.best_solution[i]
+                    v = self.best_solution[i+1]
+
+                    pheromone[u][v] += deposit
+
+            self.convergence_curve[iteration] = self.best_fitness
+
+        self.execution_time = time.time() - start_time
+
+        return self
+
+    # ---------------------------------------------------------
+    # Results
+    # ---------------------------------------------------------
+
+    def get_results(self):
+
+        return {
+            "algorithm": self.name,
+            "best_fitness": float(self.best_fitness),
+            "best_solution": self.best_solution,
+            "execution_time_seconds": self.execution_time,
+            "convergence_curve": self.convergence_curve,
+            "diversity_curve": self.diversity_curve,
+            "time_complexity": "O(max_iter * n_ants * grid_size)",
+            "space_complexity": "O(grid_size)"
         }

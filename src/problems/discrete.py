@@ -114,14 +114,17 @@ class SPProblem:
     """
     Shortest Path Problem defined on a square grid (maze).
 
-    The input file format is specific to the tests under ``tests/TSP/SP``:
-
+    Two input formats are supported:
+    
+    **Format 1 (Fixed positions):**
         Line 1: n                     # size of the grid (n x n)
         Lines 2..n+1: grid rows      # each row has n integers (0=open, 1=wall)
-
-    Start and goal locations are hardcoded for this assignment:
-        start = (0, 1)
-        goal  = (n-1, n-2)
+        Start: (0, 1), Goal: (n-1, n-2) [hardcoded]
+    
+    **Format 2 (Dynamic S/E markers):**
+        Line 1: n m                   # grid dimensions (n rows, m cols; or just n for square)
+        Lines 2..n+1: grid rows      # each row has m integers/chars: 0=open, 1=wall, S=start, E=end
+        Start and Goal: determined by S and E in grid
 
     The class exposes ``grid`` as a NumPy array and ``start_node`` / 
     ``end_node`` as (row, col) tuples so that the various graph-search 
@@ -131,8 +134,9 @@ class SPProblem:
     def __init__(self, filepath):
         """Load a grid-based shortest path instance from file."""
         self.filepath = Path(filepath)
-        self.n = 0              # grid dimension
-        self.grid = None        # 2D numpy array of 0/1 values
+        self.n = 0              # grid rows
+        self.m = 0              # grid cols
+        self.grid = None        # 2D numpy array of 0/1 values (S/E converted to 0)
         self.start_node = None  # tuple (row, col)
         self.end_node = None
         # keep n_nodes for backwards compatibility (number of cells)
@@ -147,26 +151,53 @@ class SPProblem:
         if not lines:
             raise ValueError(f"Empty file: {self.filepath}")
 
-        self.n = int(lines[0].split()[0])
+        # First line: "n" or "n m"
+        header = lines[0].split()
+        self.n = int(header[0])
+        self.m = int(header[1]) if len(header) > 1 else self.n
+
         # read exactly n subsequent lines
         if len(lines) < 1 + self.n:
             raise ValueError(f"Expected {self.n} grid rows, got {len(lines)-1}")
 
         grid_rows = []
+        has_s_e = False  # whether S and E markers are present
+        
         for idx, line in enumerate(lines[1 : 1 + self.n], start=1):
             parts = line.split()
-            if len(parts) != self.n:
+            if len(parts) != self.m:
                 raise ValueError(
-                    f"Line {idx+1} must contain {self.n} values, found {len(parts)}"
+                    f"Line {idx+1} must contain {self.m} values, found {len(parts)}"
                 )
-            grid_rows.append([int(x) for x in parts])
+            
+            row = []
+            for col, val in enumerate(parts):
+                # Handle S/E markers
+                if val == 'S':
+                    if self.start_node is not None:
+                        raise ValueError(f"Multiple S markers found in grid")
+                    self.start_node = (idx - 1, col)  # idx-1 because idx is 1-indexed
+                    has_s_e = True
+                    row.append(0)  # treat S as open
+                elif val == 'E':
+                    if self.end_node is not None:
+                        raise ValueError(f"Multiple E markers found in grid")
+                    self.end_node = (idx - 1, col)
+                    has_s_e = True
+                    row.append(0)  # treat E as open
+                else:
+                    # Parse as 0 or 1
+                    row.append(int(val))
+            
+            grid_rows.append(row)
 
         self.grid = np.array(grid_rows, dtype=int)
-        self.n_nodes = self.n * self.n
+        self.n_nodes = self.n * self.m
 
-        # fixed start and end as per problem statement
-        self.start_node = (0, 1)
-        self.end_node = (self.n - 1, self.n - 2)
+        # If S/E not found, use hardcoded defaults for backward compatibility
+        if not has_s_e:
+            self.start_node = (0, 1)
+            self.end_node = (self.n - 1, self.m - 2)
 
     def evaluate_path(self, path):
         """Compute cost of a path represented as a sequence of (row,col) tuples.
