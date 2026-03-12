@@ -18,6 +18,7 @@ import pickle
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.patches as patches
+from matplotlib.colors import ListedColormap
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 import seaborn as sns
@@ -46,29 +47,22 @@ def load_trace(filepath: str) -> Dict:
         return pickle.load(f)
 
 
+from matplotlib.colors import ListedColormap
+from matplotlib.patches import Patch
+
 def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
-                         save_path: Optional[str] = None) -> animation.FuncAnimation:
-    """
-    Create animation showing algorithm expansion on the grid.
+                          save_path: Optional[str] = None) -> animation.FuncAnimation:
 
-    Args:
-        trace: Trace dictionary from load_trace()
-        algorithm: Algorithm name to animate ('BFS', 'A*', etc.)
-        interval: Animation interval in milliseconds
-        save_path: Optional path to save animation as GIF/MP4
-
-    Returns:
-        Matplotlib animation object
-    """
     if algorithm not in trace['algorithms']:
-        raise ValueError(f"Algorithm '{algorithm}' not found in trace. Available: {list(trace['algorithms'].keys())}")
+        raise ValueError(
+            f"Algorithm '{algorithm}' not found. Available: {list(trace['algorithms'].keys())}"
+        )
 
     result = trace['algorithms'][algorithm]
     grid = trace['grid']
     start = trace['start_node']
     end = trace['end_node']
 
-    # Get expansion history
     explored_history = result.get('explored_nodes_history', [])
     frontier_history = result.get('frontier_history', [])
     best_path = result.get('best_solution', [])
@@ -76,92 +70,116 @@ def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
     if not explored_history:
         raise ValueError(f"No expansion history found for {algorithm}")
 
-    # Setup figure
-    fig, ax = plt.subplots(figsize=(10, 10))
-    ax.set_title(f'{algorithm} Expansion on {grid.shape[0]}x{grid.shape[1]} Grid', fontsize=14)
-    ax.set_xlabel('Column')
-    ax.set_ylabel('Row')
-
-    # Create grid display
-    grid_display = np.copy(grid)
-
-    # Mark start and end
-    grid_display[start] = 2  # Start marker
-    grid_display[end] = 3    # End marker
-
-    im = ax.imshow(grid_display, cmap='Blues', origin='upper',
-                   extent=[-0.5, grid.shape[1]-0.5, grid.shape[0]-0.5, -0.5])
-
-    # Colorbar
-    cbar = plt.colorbar(im, ax=ax, shrink=0.8)
-    cbar.set_ticks([0, 1, 2, 3])
-    cbar.set_ticklabels(['Open', 'Wall', 'Start', 'Goal'])
-
-    # Animation state
-    step = 0
     max_steps = len(explored_history)
 
+    # ---- State values ----
+    OPEN = 0
+    WALL = 1
+    START = 2
+    GOAL = 3
+    EXPLORED = 4
+    FRONTIER = 5
+    PATH = 6
+
+    # ---- Colors ----
+    cmap = ListedColormap([
+        "#ffffff",  # open
+        "#000000",  # wall
+        "#ff0000",  # start
+        "#ffff00",  # goal
+        "#4caf50",  # explored
+        "#ff9800",  # frontier
+        "#9c27b0"   # final path
+    ])
+
+    # ---- Setup figure ----
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_xlabel("Column")
+    ax.set_ylabel("Row")
+
+    # Initial grid
+    display_grid = np.copy(grid)
+    display_grid[start] = START
+    display_grid[end] = GOAL
+
+    im = ax.imshow(display_grid, cmap=cmap, vmin=0, vmax=6, origin="upper")
+
+    rows, cols = grid.shape
+
+    # ---- Draw grid lines ----
+    ax.set_xticks(np.arange(-0.5, cols, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, rows, 1), minor=True)
+    ax.grid(which="minor", color="gray", linewidth=0.5)
+    ax.tick_params(which="minor", bottom=False, left=False)
+
+    # ---- Legend instead of colorbar ----
+    legend_elements = [
+        Patch(facecolor="#ffffff", edgecolor="black", label="Open"),
+        Patch(facecolor="#000000", label="Wall"),
+        Patch(facecolor="#00AFB9", label="Start"),
+        Patch(facecolor="#0081A7", label="Goal"),
+        Patch(facecolor="#FDFCDC", label="Explored"),
+        Patch(facecolor="#FED9B7", label="Frontier"),
+        Patch(facecolor="#F07167", label="Path")
+    ]
+
+    ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.35, 1))
+
+    ax.set_title(f"{algorithm} Expansion")
+
+    # ---- Animation function ----
     def animate(frame):
-        nonlocal step
-        ax.clear()
 
-        # Reset grid display
+        step = min(frame, max_steps - 1)
+
         display_grid = np.copy(grid)
-        display_grid[start] = 2
-        display_grid[end] = 3
+        display_grid[start] = START
+        display_grid[end] = GOAL
 
-        # Color explored nodes (up to current step)
-        if step < len(explored_history):
-            for node in explored_history[:step+1]:
-                if node != start and node != end:
-                    display_grid[node] = 4  # Explored
+        # explored nodes
+        for node in explored_history[:step + 1]:
+            if node != start and node != end:
+                display_grid[node] = EXPLORED
 
-        # Color frontier nodes
-        if step < len(frontier_history) and frontier_history[step]:
+        # frontier
+        if step < len(frontier_history):
             for node in frontier_history[step]:
-                if (node != start and node != end and
-                    display_grid[node] != 4):  # Don't overwrite explored
-                    display_grid[node] = 5  # Frontier
+                if node != start and node != end and display_grid[node] != EXPLORED:
+                    display_grid[node] = FRONTIER
 
-        # Color final path
-        if step >= len(explored_history) - 1 and best_path:
+        # final path
+        if frame >= max_steps - 1 and best_path:
             for node in best_path:
                 if node != start and node != end:
-                    display_grid[node] = 6  # Path
+                    display_grid[node] = PATH
 
-        # Update display
-        im = ax.imshow(display_grid, cmap='viridis', origin='upper',
-                       extent=[-0.5, grid.shape[1]-0.5, grid.shape[0]-0.5, -0.5])
-        ax.set_title(f'{algorithm} - Step {step+1}/{max_steps}')
-        ax.set_xlabel('Column')
-        ax.set_ylabel('Row')
+        im.set_data(display_grid)
 
-        # Update colorbar
-        if step == 0:
-            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
-            cbar.set_ticks([0, 1, 2, 3, 4, 5, 6])
-            cbar.set_ticklabels(['Open', 'Wall', 'Start', 'Goal', 'Explored', 'Frontier', 'Path'])
-
-        step += 1
-        if step >= max_steps + 10:  # Show final path for a few frames
-            step = max_steps - 1
+        ax.set_title(f"{algorithm} - Step {step+1}/{max_steps}")
 
         return [im]
 
-    # Create animation
-    anim = animation.FuncAnimation(fig, animate, frames=max_steps + 10,
-                                 interval=interval, blit=False, repeat=True)
+    anim = animation.FuncAnimation(
+        fig,
+        animate,
+        frames=max_steps + 10,
+        interval=interval,
+        blit=False,
+        repeat=True,
+    )
 
-    # Save if requested
     if save_path:
-        if save_path.endswith('.gif'):
-            anim.save(save_path, writer='pillow', fps=1000//interval)
-        elif save_path.endswith('.mp4'):
-            anim.save(save_path, writer='ffmpeg', fps=1000//interval)
+        if save_path.endswith(".gif"):
+            anim.save(save_path, writer="pillow", fps=1000 // interval)
+        elif save_path.endswith(".mp4"):
+            anim.save(save_path, writer="ffmpeg", fps=1000 // interval)
+        else:
+            print(f"Unsupported save format for {save_path}. Use .gif or .mp4.")
         print(f"Animation saved to: {save_path}")
+    else:
+        print("No save path provided, animation will not be saved.")
 
     return anim
-
 
 def plot_path_comparison(trace: Dict, algorithms: Optional[List[str]] = None,
                         save_path: Optional[str] = None):

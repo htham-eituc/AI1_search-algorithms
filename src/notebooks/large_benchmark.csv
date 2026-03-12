@@ -1,4 +1,4 @@
 algorithm,best_fitness,execution_time_seconds,nodes_expanded,path_length,optimality_gap,optimality_gap_pct
-BFS,198.0,0.01000213623046875,7052,199,0.0,0.0
-AStarSearch,198.0,0.00443267822265625,2029,199,0.0,0.0
-GreedyBestFirst,246.0,0.0,350,247,48.0,24.24
+BFS,198.0,0.03650927543640137,7052,199,0.0,0.0
+AStarSearch,198.0,0.01799941062927246,2029,199,0.0,0.0
+GreedyBestFirst,246.0,0.0030198097229003906,350,247,48.0,24.24
