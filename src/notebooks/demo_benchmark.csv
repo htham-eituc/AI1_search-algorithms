@@ -1,0 +1,4 @@
+algorithm,best_fitness,execution_time_seconds,nodes_expanded,path_length,optimality_gap,optimality_gap_pct
+DFS,242.0,0.0010001659393310547,318,243,208.0,611.76
+AStarSearch,34.0,0.0010027885437011719,317,35,0.0,0.0
+GreedyBestFirst,34.0,0.0,35,35,0.0,0.0

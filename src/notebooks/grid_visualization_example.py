@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+"""
+Grid Pathfinding Visualization Notebook
+=======================================
+
+This notebook provides visualization functions for grid pathfinding experiments.
+It can create animations of algorithm expansion, path visualizations, and
+performance comparison plots.
+
+Usage:
+    from notebooks.grid_visualization_example import load_trace, create_grid_animation
+    trace = load_trace('trace.pkl')
+    anim = create_grid_animation(trace, 'BFS')
+    plt.show()
+"""
+
+import pickle
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import matplotlib.patches as patches
+import numpy as np
+from typing import Dict, List, Optional, Tuple
+import seaborn as sns
+from pathlib import Path
+import sys
+
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Set style
+plt.style.use('default')
+sns.set_palette("husl")
+
+
+def load_trace(filepath: str) -> Dict:
+    """
+    Load a trace file created by GridExperiment.visualize().
+
+    Args:
+        filepath: Path to .pkl trace file
+
+    Returns:
+        Trace dictionary containing grid and algorithm results
+    """
+    with open(filepath, 'rb') as f:
+        return pickle.load(f)
+
+
+def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
+                         save_path: Optional[str] = None) -> animation.FuncAnimation:
+    """
+    Create animation showing algorithm expansion on the grid.
+
+    Args:
+        trace: Trace dictionary from load_trace()
+        algorithm: Algorithm name to animate ('BFS', 'A*', etc.)
+        interval: Animation interval in milliseconds
+        save_path: Optional path to save animation as GIF/MP4
+
+    Returns:
+        Matplotlib animation object
+    """
+    if algorithm not in trace['algorithms']:
+        raise ValueError(f"Algorithm '{algorithm}' not found in trace. Available: {list(trace['algorithms'].keys())}")
+
+    result = trace['algorithms'][algorithm]
+    grid = trace['grid']
+    start = trace['start_node']
+    end = trace['end_node']
+
+    # Get expansion history
+    explored_history = result.get('explored_nodes_history', [])
+    frontier_history = result.get('frontier_history', [])
+    best_path = result.get('best_solution', [])
+
+    if not explored_history:
+        raise ValueError(f"No expansion history found for {algorithm}")
+
+    # Setup figure
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.set_title(f'{algorithm} Expansion on {grid.shape[0]}x{grid.shape[1]} Grid', fontsize=14)
+    ax.set_xlabel('Column')
+    ax.set_ylabel('Row')
+
+    # Create grid display
+    grid_display = np.copy(grid)
+
+    # Mark start and end
+    grid_display[start] = 2  # Start marker
+    grid_display[end] = 3    # End marker
+
+    im = ax.imshow(grid_display, cmap='Blues', origin='upper',
+                   extent=[-0.5, grid.shape[1]-0.5, grid.shape[0]-0.5, -0.5])
+
+    # Colorbar
+    cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+    cbar.set_ticks([0, 1, 2, 3])
+    cbar.set_ticklabels(['Open', 'Wall', 'Start', 'Goal'])
+
+    # Animation state
+    step = 0
+    max_steps = len(explored_history)
+
+    def animate(frame):
+        nonlocal step
+        ax.clear()
+
+        # Reset grid display
+        display_grid = np.copy(grid)
+        display_grid[start] = 2
+        display_grid[end] = 3
+
+        # Color explored nodes (up to current step)
+        if step < len(explored_history):
+            for node in explored_history[:step+1]:
+                if node != start and node != end:
+                    display_grid[node] = 4  # Explored
+
+        # Color frontier nodes
+        if step < len(frontier_history) and frontier_history[step]:
+            for node in frontier_history[step]:
+                if (node != start and node != end and
+                    display_grid[node] != 4):  # Don't overwrite explored
+                    display_grid[node] = 5  # Frontier
+
+        # Color final path
+        if step >= len(explored_history) - 1 and best_path:
+            for node in best_path:
+                if node != start and node != end:
+                    display_grid[node] = 6  # Path
+
+        # Update display
+        im = ax.imshow(display_grid, cmap='viridis', origin='upper',
+                       extent=[-0.5, grid.shape[1]-0.5, grid.shape[0]-0.5, -0.5])
+        ax.set_title(f'{algorithm} - Step {step+1}/{max_steps}')
+        ax.set_xlabel('Column')
+        ax.set_ylabel('Row')
+
+        # Update colorbar
+        if step == 0:
+            cbar = plt.colorbar(im, ax=ax, shrink=0.8)
+            cbar.set_ticks([0, 1, 2, 3, 4, 5, 6])
+            cbar.set_ticklabels(['Open', 'Wall', 'Start', 'Goal', 'Explored', 'Frontier', 'Path'])
+
+        step += 1
+        if step >= max_steps + 10:  # Show final path for a few frames
+            step = max_steps - 1
+
+        return [im]
+
+    # Create animation
+    anim = animation.FuncAnimation(fig, animate, frames=max_steps + 10,
+                                 interval=interval, blit=False, repeat=True)
+
+    # Save if requested
+    if save_path:
+        if save_path.endswith('.gif'):
+            anim.save(save_path, writer='pillow', fps=1000//interval)
+        elif save_path.endswith('.mp4'):
+            anim.save(save_path, writer='ffmpeg', fps=1000//interval)
+        print(f"Animation saved to: {save_path}")
+
+    return anim
+
+
+def plot_path_comparison(trace: Dict, algorithms: Optional[List[str]] = None,
+                        save_path: Optional[str] = None):
+    """
+    Plot final paths found by different algorithms.
+
+    Args:
+        trace: Trace dictionary from load_trace()
+        algorithms: List of algorithms to compare (default: all)
+        save_path: Optional path to save plot
+    """
+    if algorithms is None:
+        algorithms = list(trace['algorithms'].keys())
+
+    grid = trace['grid']
+    start = trace['start_node']
+    end = trace['end_node']
+
+    n_algorithms = len(algorithms)
+    n_cols = min(3, n_algorithms)
+    n_rows = (n_algorithms + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 5*n_rows))
+    if n_rows == 1:
+        axes = [axes] if n_cols == 1 else axes
+    else:
+        axes = axes.flatten()
+
+    for i, algo in enumerate(algorithms):
+        ax = axes[i]
+        result = trace['algorithms'][algo]
+
+        # Create display grid
+        display_grid = np.copy(grid)
+        display_grid[start] = 2
+        display_grid[end] = 3
+
+        # Mark path
+        best_path = result.get('best_solution', [])
+        for node in best_path:
+            if node != start and node != end:
+                display_grid[node] = 4
+
+        # Plot
+        im = ax.imshow(display_grid, cmap='viridis', origin='upper')
+        ax.set_title(f'{algo}\nPath Length: {len(best_path)-1 if best_path else "N/A"}')
+        ax.set_xlabel('Column')
+        ax.set_ylabel('Row')
+
+    # Hide empty subplots
+    for i in range(len(algorithms), len(axes)):
+        axes[i].set_visible(False)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Path comparison plot saved to: {save_path}")
+
+    return fig
+
+
+def plot_performance_comparison(csv_path: str, metrics: List[str] = None,
+                               save_path: Optional[str] = None):
+    """
+    Create performance comparison plots from benchmark CSV.
+
+    Args:
+        csv_path: Path to benchmark CSV file
+        metrics: List of metrics to plot (default: ['best_fitness', 'execution_time_seconds', 'nodes_expanded'])
+        save_path: Optional path to save plot
+    """
+    import pandas as pd
+
+    if metrics is None:
+        metrics = ['best_fitness', 'execution_time_seconds', 'nodes_expanded']
+
+    df = pd.read_csv(csv_path)
+
+    # Filter out failed algorithms
+    df = df.dropna(subset=['best_fitness'])
+
+    if len(df) == 0:
+        print("No valid results found in CSV")
+        return
+
+    n_metrics = len(metrics)
+    fig, axes = plt.subplots(1, n_metrics, figsize=(6*n_metrics, 5))
+
+    if n_metrics == 1:
+        axes = [axes]
+
+    metric_names = {
+        'best_fitness': 'Path Length',
+        'execution_time_seconds': 'Execution Time (s)',
+        'nodes_expanded': 'Nodes Expanded',
+        'optimality_gap_pct': 'Suboptimality (%)'
+    }
+
+    for i, metric in enumerate(metrics):
+        ax = axes[i]
+
+        if metric not in df.columns:
+            ax.text(0.5, 0.5, f'Metric "{metric}" not found', ha='center', va='center', transform=ax.transAxes)
+            continue
+
+        # Create bar plot
+        bars = ax.bar(range(len(df)), df[metric], color=sns.color_palette("husl", len(df)))
+
+        # Add value labels
+        for j, bar in enumerate(bars):
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + max(df[metric])*0.01,
+                   '.2f', ha='center', va='bottom', fontsize=10)
+
+        ax.set_xticks(range(len(df)))
+        ax.set_xticklabels(df['algorithm'], rotation=45, ha='right')
+        ax.set_title(f'{metric_names.get(metric, metric)}')
+        ax.set_ylabel(metric_names.get(metric, metric))
+
+        # Add grid
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Performance comparison plot saved to: {save_path}")
+
+    return fig
+
+
+def plot_convergence_comparison(csv_path: str, algorithms: Optional[List[str]] = None,
+                               save_path: Optional[str] = None):
+    """
+    Plot convergence curves for metaheuristic algorithms.
+
+    Note: This requires trace files with convergence_curve data, not CSV.
+    For CSV files, this will show iteration count comparison.
+
+    Args:
+        csv_path: Path to benchmark CSV (or trace file path)
+        algorithms: Algorithms to include
+        save_path: Optional path to save plot
+    """
+    import pandas as pd
+
+    # Try to load as CSV first
+    try:
+        df = pd.read_csv(csv_path)
+        # For CSV, we only have final metrics, not convergence curves
+        fig, ax = plt.subplots(figsize=(8, 6))
+
+        meta_algorithms = df[df['algorithm'].isin(['GA_Grid', 'ACO_Grid'])]
+        if len(meta_algorithms) == 0:
+            ax.text(0.5, 0.5, 'No metaheuristic algorithms found in CSV', ha='center', va='center', transform=ax.transAxes)
+        else:
+            bars = ax.bar(range(len(meta_algorithms)), meta_algorithms['iterations'],
+                          color=sns.color_palette("husl", len(meta_algorithms)))
+            ax.set_xticks(range(len(meta_algorithms)))
+            ax.set_xticklabels(meta_algorithms['algorithm'], rotation=45, ha='right')
+            ax.set_title('Metaheuristic Iterations')
+            ax.set_ylabel('Iterations')
+
+        plt.tight_layout()
+
+    except:
+        # Assume it's a trace file
+        trace = load_trace(csv_path)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        meta_algorithms = ['GA_Grid', 'ACO_Grid']
+        colors = sns.color_palette("husl", len(meta_algorithms))
+
+        for i, algo in enumerate(meta_algorithms):
+            if algo in trace['algorithms']:
+                result = trace['algorithms'][algo]
+                conv_curve = result.get('convergence_curve', [])
+
+                if conv_curve:
+                    ax.plot(conv_curve, label=algo, color=colors[i], linewidth=2)
+
+        ax.set_xlabel('Iteration')
+        ax.set_ylabel('Best Fitness')
+        ax.set_title('Convergence Curves')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Convergence plot saved to: {save_path}")
+
+    return fig
+
+
+# Example usage and demonstration
+if __name__ == "__main__":
+    print("Grid Visualization Example")
+    print("=" * 40)
+
+    # Example: Load trace and create animation
+    try:
+        # This would be run after creating a trace file
+        print("Example usage:")
+        print("1. Create trace file:")
+        print("   python experiments/grid_experiment.py --mode visual --rows 10 --cols 10 --algorithms BFS,A* --out example_trace.pkl")
+        print()
+        print("2. Load and animate:")
+        print("   from notebooks.grid_visualization_example import load_trace, create_grid_animation")
+        print("   trace = load_trace('example_trace.pkl')")
+        print("   anim = create_grid_animation(trace, 'BFS')")
+        print("   plt.show()")
+        print()
+        print("3. Create performance plots:")
+        print("   python experiments/grid_experiment.py --mode benchmark --rows 50 --cols 50 --algorithms BFS,A*,GA_Grid --out benchmark.csv")
+        print("   plot_performance_comparison('benchmark.csv')")
+        print("   plt.show()")
+
+    except Exception as e:
+        print(f"Error in example: {e}")

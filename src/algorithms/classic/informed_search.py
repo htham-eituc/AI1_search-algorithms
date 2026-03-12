@@ -50,9 +50,10 @@ class GreedyBestFirst(BaseGraphSearch):
         heuristic(node, goal) -> float.
     """
 
-    def __init__(self, grid, start_node, end_node, heuristic=None):
+    def __init__(self, grid, start_node, end_node, heuristic=None, record_frontier=False):
         super().__init__("GreedyBestFirst", grid, start_node, end_node)
         self.heuristic = heuristic if heuristic is not None else _manhattan
+        self.record_frontier = record_frontier
 
     def solve(self):
         t0    = time.time()
@@ -71,6 +72,10 @@ class GreedyBestFirst(BaseGraphSearch):
         visited = set()
 
         while heap:
+            # Save frontier state for visualization
+            if self.record_frontier:
+                self._save_frontier([n for h, n in heap])
+            
             _, node = heapq.heappop(heap)
             if node in visited:
                 continue
@@ -123,8 +128,9 @@ class AStarSearch(BaseGraphSearch):
         heuristic(node, goal) -> float.
     """
 
-    def __init__(self, grid, start_node, end_node, heuristic=None):
+    def __init__(self, grid, start_node, end_node, heuristic=None, record_frontier=False):
         super().__init__("AStarSearch", grid, start_node, end_node)
+        self.record_frontier = record_frontier
         self.heuristic = heuristic if heuristic is not None else _manhattan
         self.f_values  = {}           # exposed for visualization
 
@@ -145,6 +151,10 @@ class AStarSearch(BaseGraphSearch):
         heap   = [(self.heuristic(start, goal), start)]
 
         while heap:
+            # Save frontier state for visualization
+            if self.record_frontier:
+                self._save_frontier([n for f, n in heap])
+            
             f_val, node = heapq.heappop(heap)
 
             if node in self.f_values:       # already expanded optimally

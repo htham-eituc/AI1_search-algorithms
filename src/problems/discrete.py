@@ -199,6 +199,91 @@ class SPProblem:
             self.start_node = (0, 1)
             self.end_node = (self.n - 1, self.m - 2)
 
+    @classmethod
+    def from_array(cls, grid, start_node, end_node):
+        """
+        Create an SPProblem instance from a NumPy array grid and start/end nodes.
+
+        Parameters
+        ----------
+        grid : np.ndarray
+            2D array where 0=open, 1=wall.
+        start_node : tuple
+            (row, col) for start.
+        end_node : tuple
+            (row, col) for end.
+
+        Returns
+        -------
+        SPProblem
+            Instance with the provided grid and nodes.
+        """
+        instance = cls.__new__(cls)
+        instance.grid = grid.copy()
+        instance.n, instance.m = grid.shape
+        instance.start_node = start_node
+        instance.end_node = end_node
+        instance.n_nodes = instance.n * instance.m
+        instance.filepath = None  # No file associated
+        return instance
+
+    @classmethod
+    def random(cls, rows, cols=None, obstacle_prob=0.25, start=None, end=None, seed=None):
+        """
+        Generate a random grid-based shortest path problem.
+
+        Parameters
+        ----------
+        rows : int
+            Number of rows.
+        cols : int, optional
+            Number of columns (default: same as rows).
+        obstacle_prob : float
+            Probability of a cell being a wall (0-1).
+        start : tuple, optional
+            (row, col) for start; if None, random open cell.
+        end : tuple, optional
+            (row, col) for end; if None, random open cell.
+        seed : int, optional
+            Random seed for reproducibility.
+
+        Returns
+        -------
+        SPProblem
+            Randomly generated instance.
+        """
+        if cols is None:
+            cols = rows
+        if seed is not None:
+            np.random.seed(seed)
+
+        # Generate grid: 0=open, 1=wall
+        grid = np.random.choice([0, 1], size=(rows, cols), p=[1 - obstacle_prob, obstacle_prob])
+
+        # Ensure start and end are open
+        def find_open_cell():
+            while True:
+                r, c = np.random.randint(0, rows), np.random.randint(0, cols)
+                if grid[r, c] == 0:
+                    return (r, c)
+
+        if start is None:
+            start = find_open_cell()
+        else:
+            grid[start] = 0  # Ensure it's open
+
+        if end is None:
+            end = find_open_cell()
+        else:
+            grid[end] = 0  # Ensure it's open
+
+        # Ensure start != end
+        while start == end:
+            end = find_open_cell()
+            grid[end] = 0
+
+        return cls.from_array(grid, start, end)
+
     def evaluate_path(self, path):
         """Compute cost of a path represented as a sequence of (row,col) tuples.
 

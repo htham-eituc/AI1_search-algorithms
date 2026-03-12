@@ -44,8 +44,9 @@ class BFS(BaseGraphSearch):
     Optimal for unweighted grids.
     """
 
-    def __init__(self, grid, start_node, end_node):
+    def __init__(self, grid, start_node, end_node, record_frontier=False):
         super().__init__("BFS", grid, start_node, end_node)
+        self.record_frontier = record_frontier
 
     def solve(self):
         t0    = time.time()
@@ -62,6 +63,10 @@ class BFS(BaseGraphSearch):
         parent = {start: None}
 
         while queue:
+            # Save frontier state for visualization
+            if self.record_frontier:
+                self._save_frontier(list(queue))
+            
             node = queue.popleft()
             self.explored_path.append(node)
             self.nodes_expanded += 1
@@ -98,8 +103,9 @@ class DFS(BaseGraphSearch):
     Time/space complexity: O(V + E).
     """
 
-    def __init__(self, grid, start_node, end_node):
+    def __init__(self, grid, start_node, end_node, record_frontier=False):
         super().__init__("DFS", grid, start_node, end_node)
+        self.record_frontier = record_frontier
 
     def solve(self):
         t0    = time.time()
@@ -117,6 +123,10 @@ class DFS(BaseGraphSearch):
         seen  = set()
 
         while stack:
+            # Save frontier state for visualization
+            if self.record_frontier:
+                self._save_frontier([n for n, p in stack])
+            
             node, path = stack.pop()
             if node in seen:
                 continue
@@ -154,8 +164,9 @@ class UCS(BaseGraphSearch):
     single-target queries. Guaranteed optimal for non-negative edge costs.
     """
 
-    def __init__(self, grid, start_node, end_node):
+    def __init__(self, grid, start_node, end_node, record_frontier=False):
         super().__init__("UCS", grid, start_node, end_node)
+        self.record_frontier = record_frontier
 
     def _step_cost(self, node) -> float:
         """Cost of entering a cell — min cost is 1 to avoid zero-cost loops."""
@@ -177,6 +188,10 @@ class UCS(BaseGraphSearch):
         visited = {}                        # node -> best g(n) confirmed
 
         while heap:
+            # Save frontier state for visualization
+            if self.record_frontier:
+                self._save_frontier([n for c, n, p in heap])
+            
             cost, node, path = heapq.heappop(heap)
 
             if node in visited:

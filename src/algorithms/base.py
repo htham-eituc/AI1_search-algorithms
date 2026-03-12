@@ -108,6 +108,10 @@ class BaseGraphSearch(BaseAlgorithm):
         # To visualize the search wave later
         self.explored_path = []       
 
+        # Optional frontier tracking for visualization
+        self.record_frontier = False
+        self.frontier_history = []       
+
     def get_neighbors(self, current_node):
         """
         Finds valid (up, down, left, right) neighbors that are not walls.
@@ -124,6 +128,11 @@ class BaseGraphSearch(BaseAlgorithm):
                 
         return neighbors
 
+    def _save_frontier(self, frontier):
+        """Save a snapshot of the current frontier if recording is enabled."""
+        if self.record_frontier:
+            self.frontier_history.append(list(frontier))  # Shallow copy
+
     def get_results(self):
         """
         Overrides the master get_results to include pathfinding-specific metrics.
@@ -134,4 +143,6 @@ class BaseGraphSearch(BaseAlgorithm):
             "path_length": len(self.best_solution) if self.best_solution else 0,
             "explored_nodes_history": self.explored_path
         })
+        if self.record_frontier and self.frontier_history:
+            results["frontier_history"] = self.frontier_history
         return results
