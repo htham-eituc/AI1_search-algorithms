@@ -1,5 +1,7 @@
 **/**/gen.cpp
 
+src/notebooks/outputs/
+
 .vscode/
 
 # Byte-compiled / optimized / DLL files

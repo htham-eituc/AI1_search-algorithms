@@ -85,45 +85,51 @@ def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
     cmap = ListedColormap([
         "#ffffff",  # open
         "#000000",  # wall
-        "#ff0000",  # start
-        "#ffff00",  # goal
-        "#4caf50",  # explored
-        "#ff9800",  # frontier
-        "#9c27b0"   # final path
+        "#FDFCD8",  # start
+        "#006A8A",  # goal
+        "#00C2CC",  # explored
+        "#B3E5CD",  # frontier
+        "#0081A7"   # path
     ])
 
     # ---- Setup figure ----
     fig, ax = plt.subplots(figsize=(8, 8))
-    ax.set_xlabel("Column")
-    ax.set_ylabel("Row")
+    fig.subplots_adjust(right=0.8)
 
-    # Initial grid
-    display_grid = np.copy(grid)
+    rows, cols = grid.shape
+
+    # reusable display grid (avoid reallocating)
+    display_grid = grid.copy()
     display_grid[start] = START
     display_grid[end] = GOAL
 
     im = ax.imshow(display_grid, cmap=cmap, vmin=0, vmax=6, origin="upper")
+    ax.set_aspect("equal")
 
-    rows, cols = grid.shape
+    ax.set_xlabel("Column")
+    ax.set_ylabel("Row")
+    ax.set_xticks([])
+    ax.set_yticks([])
 
-    # ---- Draw grid lines ----
-    ax.set_xticks(np.arange(-0.5, cols, 1), minor=True)
-    ax.set_yticks(np.arange(-0.5, rows, 1), minor=True)
-    ax.grid(which="minor", color="gray", linewidth=0.5)
-    ax.tick_params(which="minor", bottom=False, left=False)
+    # ---- Draw grid lines once ----
+    for x in range(cols + 1):
+        ax.axvline(x - 0.5, color="gray", linewidth=0.5)
 
-    # ---- Legend instead of colorbar ----
+    for y in range(rows + 1):
+        ax.axhline(y - 0.5, color="gray", linewidth=0.5)
+
+    # ---- Legend ----
     legend_elements = [
         Patch(facecolor="#ffffff", edgecolor="black", label="Open"),
         Patch(facecolor="#000000", label="Wall"),
-        Patch(facecolor="#00AFB9", label="Start"),
-        Patch(facecolor="#0081A7", label="Goal"),
-        Patch(facecolor="#FDFCDC", label="Explored"),
-        Patch(facecolor="#FED9B7", label="Frontier"),
-        Patch(facecolor="#F07167", label="Path")
+        Patch(facecolor="#FDFCD8", label="Start"),
+        Patch(facecolor="#006A8A", label="Goal"),
+        Patch(facecolor="#00C2CC", label="Explored"),
+        Patch(facecolor="#B3E5CD", label="Frontier"),
+        Patch(facecolor="#0081A7", label="Path")
     ]
 
-    ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.35, 1))
+    ax.legend(handles=legend_elements, loc="center left", bbox_to_anchor=(1.02, 0.5))
 
     ax.set_title(f"{algorithm} Expansion")
 
@@ -132,19 +138,26 @@ def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
 
         step = min(frame, max_steps - 1)
 
-        display_grid = np.copy(grid)
+        # reset grid
+        display_grid[:] = grid
         display_grid[start] = START
         display_grid[end] = GOAL
 
+        explored_set = set(explored_history[:step+1])
+
         # explored nodes
-        for node in explored_history[:step + 1]:
+        for node in explored_set:
             if node != start and node != end:
                 display_grid[node] = EXPLORED
 
-        # frontier
+        # frontier nodes
         if step < len(frontier_history):
             for node in frontier_history[step]:
-                if node != start and node != end and display_grid[node] != EXPLORED:
+                if (
+                    node != start
+                    and node != end
+                    and node not in explored_set
+                ):
                     display_grid[node] = FRONTIER
 
         # final path
@@ -162,10 +175,10 @@ def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
     anim = animation.FuncAnimation(
         fig,
         animate,
-        frames=max_steps + 10,
+        frames=max_steps,
         interval=interval,
-        blit=False,
-        repeat=True,
+        blit=True,
+        repeat=False,
     )
 
     if save_path:
@@ -179,18 +192,12 @@ def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
     else:
         print("No save path provided, animation will not be saved.")
 
+    plt.close(fig)
     return anim
 
 def plot_path_comparison(trace: Dict, algorithms: Optional[List[str]] = None,
                         save_path: Optional[str] = None):
-    """
-    Plot final paths found by different algorithms.
 
-    Args:
-        trace: Trace dictionary from load_trace()
-        algorithms: List of algorithms to compare (default: all)
-        save_path: Optional path to save plot
-    """
     if algorithms is None:
         algorithms = list(trace['algorithms'].keys())
 
@@ -198,38 +205,73 @@ def plot_path_comparison(trace: Dict, algorithms: Optional[List[str]] = None,
     start = trace['start_node']
     end = trace['end_node']
 
+    # ---- State values (same as animation) ----
+    OPEN = 0
+    WALL = 1
+    START = 2
+    GOAL = 3
+    EXPLORED = 4
+    FRONTIER = 5
+    PATH = 6
+
+    # ---- Same colormap as animation ----
+    cmap = ListedColormap([
+        "#ffffff",  # open
+        "#000000",  # wall
+        "#FDFCD8",  # start
+        "#006A8A",  # goal
+        "#00C2CC",  # explored
+        "#B3E5CD",  # frontier
+        "#0081A7"   # final path
+    ])
+
     n_algorithms = len(algorithms)
     n_cols = min(3, n_algorithms)
     n_rows = (n_algorithms + n_cols - 1) // n_cols
 
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 5*n_rows))
+
     if n_rows == 1:
         axes = [axes] if n_cols == 1 else axes
     else:
         axes = axes.flatten()
 
     for i, algo in enumerate(algorithms):
+
         ax = axes[i]
         result = trace['algorithms'][algo]
 
-        # Create display grid
         display_grid = np.copy(grid)
-        display_grid[start] = 2
-        display_grid[end] = 3
+        display_grid[start] = START
+        display_grid[end] = GOAL
 
-        # Mark path
         best_path = result.get('best_solution', [])
+
         for node in best_path:
             if node != start and node != end:
-                display_grid[node] = 4
+                display_grid[node] = PATH
 
-        # Plot
-        im = ax.imshow(display_grid, cmap='viridis', origin='upper')
-        ax.set_title(f'{algo}\nPath Length: {len(best_path)-1 if best_path else "N/A"}')
-        ax.set_xlabel('Column')
-        ax.set_ylabel('Row')
+        im = ax.imshow(display_grid, cmap=cmap, vmin=0, vmax=6, origin="upper")
+        ax.set_aspect("equal")
 
-    # Hide empty subplots
+        rows, cols = grid.shape
+
+        # grid lines
+        # draw vertical lines
+        for x in range(cols + 1):
+            ax.axvline(x - 0.5, color="gray", linewidth=0.5)
+
+        # draw horizontal lines
+        for y in range(rows + 1):
+            ax.axhline(y - 0.5, color="gray", linewidth=0.5)
+
+        ax.set_title(f"{algo}\nPath Length: {len(best_path)-1 if best_path else 'N/A'}")
+        ax.set_xlabel("Column")
+        ax.set_ylabel("Row")
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # Hide unused axes
     for i in range(len(algorithms), len(axes)):
         axes[i].set_visible(False)
 
