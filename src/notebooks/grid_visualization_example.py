@@ -18,7 +18,7 @@ import pickle
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.patches as patches
-from matplotlib.colors import ListedColormap
+from matplotlib.colors import ListedColormap, BoundaryNorm
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 import seaborn as sns
@@ -51,7 +51,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
 def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
-                          save_path: Optional[str] = None) -> animation.FuncAnimation:
+                          frame_skip: int = 1, save_path: Optional[str] = None) -> animation.FuncAnimation:
 
     if algorithm not in trace['algorithms']:
         raise ValueError(
@@ -134,21 +134,22 @@ def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
     ax.set_title(f"{algorithm} Expansion")
 
     # ---- Animation function ----
+    explored_set = set()
+
     def animate(frame):
 
-        step = min(frame, max_steps - 1)
+        step = frame
 
-        # reset grid
         display_grid[:] = grid
         display_grid[start] = START
         display_grid[end] = GOAL
 
-        explored_set = set(explored_history[:step+1])
+        if step < len(explored_history):
+            explored_set.add(explored_history[step])
 
-        # explored nodes
-        for node in explored_set:
-            if node != start and node != end:
-                display_grid[node] = EXPLORED
+        if explored_set:
+            r, c = zip(*explored_set)
+            display_grid[r, c] = EXPLORED
 
         # frontier nodes
         if step < len(frontier_history):
@@ -172,10 +173,12 @@ def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
 
         return [im]
 
+    frame_sequence = range(0, max_steps, frame_skip)
+
     anim = animation.FuncAnimation(
         fig,
         animate,
-        frames=max_steps,
+        frames=frame_sequence,
         interval=interval,
         blit=True,
         repeat=False,
@@ -194,6 +197,72 @@ def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
 
     plt.close(fig)
     return anim
+
+def display_grid(
+    grid,
+    start_node=None,
+    end_node=None,
+    title="Grid Visualization",
+    show_grid=True,
+    figsize=(8, 8)
+):
+    """
+    Display a grid map with start/end nodes.
+
+    Grid encoding:
+    0 = open
+    1 = wall
+    2 = start
+    3 = goal
+    """
+
+    grid_display = grid.copy()
+
+    if start_node is not None:
+        grid_display[start_node] = 2
+
+    if end_node is not None:
+        grid_display[end_node] = 3
+
+    # ---- Discrete colormap ----
+    colors = [
+        "#ffffff",  # open
+        "#000000",  # wall
+        "#4CAF50",  # start
+        "#F44336"   # goal
+    ]
+
+    cmap = ListedColormap(colors)
+    norm = BoundaryNorm([-0.5, 0.5, 1.5, 2.5, 3.5], cmap.N)
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    im = ax.imshow(grid_display, cmap=cmap, norm=norm, origin="upper")
+
+    ax.set_title(title)
+    ax.set_xlabel("Column")
+    ax.set_ylabel("Row")
+
+    # ---- Colorbar ----
+    cbar = plt.colorbar(im, ax=ax, ticks=[0, 1, 2, 3], shrink=0.8)
+    cbar.ax.set_yticklabels(["Open", "Wall", "Start", "Goal"])
+
+    # ---- Optional grid lines ----
+    if show_grid:
+        rows, cols = grid_display.shape
+
+        ax.set_xticks(np.arange(-0.5, cols, 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, rows, 1), minor=True)
+
+        ax.grid(which="minor", color="gray", linewidth=0.4)
+
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    plt.tight_layout()
+    plt.show()
+
+    return fig, ax
 
 def plot_path_comparison(trace: Dict, algorithms: Optional[List[str]] = None,
                         save_path: Optional[str] = None):
