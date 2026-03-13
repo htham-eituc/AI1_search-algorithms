@@ -2,10 +2,12 @@ import os
 import random
 import numpy as np
 
-ROOT = "/"
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
 
 SMALL_SIZE = 60
-LARGE_SIZE = 1000
+LARGE_SIZE = 150
 
 def write_grid(grid, path):
     n, m = grid.shape

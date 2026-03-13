@@ -20,6 +20,7 @@ import matplotlib.animation as animation
 import matplotlib.patches as patches
 from matplotlib.colors import ListedColormap, BoundaryNorm
 import numpy as np
+import imageio_ffmpeg
 from typing import Dict, List, Optional, Tuple
 import seaborn as sns
 from pathlib import Path

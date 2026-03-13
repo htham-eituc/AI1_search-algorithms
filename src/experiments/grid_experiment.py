@@ -62,7 +62,45 @@ class GridExperiment:
             problem: SPProblem instance with grid, start, and end nodes
         """
         self.problem = problem
-        self.config = load_config("../utils/config.json")
+        # Find config.json dynamically - works from any working directory
+        config_path = self._find_config()
+        self.config = load_config(config_path)
+
+    @staticmethod
+    def _find_config() -> str:
+        """
+        Find config.json by searching up the directory tree.
+        
+        Returns:
+            Path to config.json
+            
+        Raises:
+            FileNotFoundError: If config.json cannot be found
+        """
+        # Try multiple search paths
+        search_paths = [
+            Path(__file__).parent.parent / "utils" / "config.json",  # From experiments/
+            Path(__file__).parent.parent.parent / "utils" / "config.json",  # From src/ (if exists)
+            Path.cwd() / "utils" / "config.json",  # From current working directory
+            Path.cwd() / "config.json",  # In current directory
+        ]
+        
+        # Search up the directory tree from current working directory
+        current = Path.cwd()
+        for _ in range(5):  # Search up to 5 levels
+            search_paths.append(current / "utils" / "config.json")
+            current = current.parent
+        
+        # Find the first existing config
+        for path in search_paths:
+            if path.exists():
+                return str(path)
+        
+        # If not found, raise error with helpful message
+        raise FileNotFoundError(
+            f"Configuration file not found. Searched in:\n" + 
+            "\n".join(f"  - {p}" for p in search_paths)
+        )
 
     @classmethod
     def from_file(cls, filepath: str) -> 'GridExperiment':
@@ -178,7 +216,7 @@ class GridExperiment:
 
         # Build trace dictionary
         trace = {
-            'grid': self.problem.grid.copy(),
+            'problem_grid': self.problem.grid.copy(),
             'start_node': self.problem.start_node,
             'end_node': self.problem.end_node,
             'grid_shape': self.problem.grid.shape,
@@ -298,13 +336,11 @@ class GridExperiment:
 
         print("Algorithm Performance (sorted by path length):")
         print("-" * 80)
+        print(f"{'Algorithm':<20} {'Path':<8} {'Optimality Gap':<16} {'Nodes':<12} {'Time (s)':<12}")
+        print("-" * 80)
         for _, row in sorted_df.iterrows():
-            gap_str = ".0f" if row['optimality_gap'] == 0 else ".1f"
-            print("20"
-                  "8.0f"
-                  "10.4f"
-                  "12.0f"
-                  "12.0f")
+            gap_str = f"{row['optimality_gap']:.0f}" if row['optimality_gap'] == 0 else f"{row['optimality_gap']:.1f}"
+            print(f"{row['algorithm']:<20} {row['best_fitness']:<8.0f} {gap_str:<16} {row['nodes_expanded']:<12.0f} {row['execution_time_seconds']:<12.4f}")
 
         print("\nNotes:")
         print("- Path length = number of steps in solution")
