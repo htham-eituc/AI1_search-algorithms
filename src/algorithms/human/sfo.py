@@ -136,6 +136,7 @@ class SFO(BaseMetaheuristic):
             self.convergence_curve[t]     = self.best_fitness
             self.average_fitness_curve[t] = fitness.mean()
             self.diversity_curve[t]       = _diversity(pos)
+            self.population_history.append(pos.copy())
 
         self.execution_time = time.time() - t0
         return self.get_results()

@@ -73,6 +73,7 @@ class TLBO(BaseMetaheuristic):
         # ── Initialisation ───────────────────────────────────────────────────
         pop     = self.initialize_population()      # (pop_size, dim)
         fitness = self.evaluate_population(pop)     # (pop_size,)
+        self.population_history.append(pop.copy())
 
         best_idx           = np.argmin(fitness)
         self.best_solution = pop[best_idx].copy()
@@ -118,6 +119,7 @@ class TLBO(BaseMetaheuristic):
             self.convergence_curve[t]     = self.best_fitness
             self.average_fitness_curve[t] = fitness.mean()
             self.diversity_curve[t]       = _diversity(pop)
+            self.population_history.append(pop.copy())
 
         self.execution_time = time.time() - t0
         return self.get_results()

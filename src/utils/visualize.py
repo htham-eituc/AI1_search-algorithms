@@ -559,8 +559,8 @@ def plot_contour_2d(
         ax.legend(fontsize=9, loc="upper right",
                   framealpha=0.7, markerscale=0.9)
 
-    ax.set_xlabel("x₁", fontsize=12)
-    ax.set_ylabel("x₂", fontsize=12)
+    ax.set_xlabel("x", fontsize=12)
+    ax.set_ylabel("y", fontsize=12)
     ax.set_title(title or "Function Landscape (2D)", fontsize=13)
     ax.set_xlim(low, high)
     ax.set_ylim(low, high)
@@ -623,6 +623,12 @@ def plot_trajectory_2d(
 # 11.  Animated GIF — population movement
 # ---------------------------------------------------------------------------
 
+from pathlib import Path
+from typing import Optional, Union
+import numpy as np
+import matplotlib.pyplot as plt
+
+
 def make_population_gif(
     func,
     bounds: tuple,
@@ -639,72 +645,122 @@ def make_population_gif(
 ) -> Path:
     """
     Create an animated GIF showing population movement on a 2D contour.
-
-    Parameters
-    ----------
-    population_history : list of np.array shape (pop_size, 2)
-        One array per iteration (from algo result["population_history"]).
-    best_history : list of np.array shape (2,), optional
-        Best position at each iteration — drawn as a star marker.
-    n_frames : int
-        Number of evenly-sampled frames (default 60).
-    fps : int
-        Frames per second in output GIF.
     """
+
     import matplotlib.animation as animation
 
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    low, high = bounds
+    # ===== Safety checks =====
     total_iters = len(population_history)
+
+    if total_iters == 0:
+        raise ValueError("population_history is empty")
+
+    # Prevent frame overflow
+    n_frames = min(n_frames, total_iters)
     frame_indices = np.linspace(0, total_iters - 1, n_frames, dtype=int)
 
-    # Pre-render contour background
+    low, high = bounds
+
+    # ===== Precompute contour =====
     x = np.linspace(low, high, resolution)
     y = np.linspace(low, high, resolution)
+
     X, Y = np.meshgrid(x, y)
+
     grid = np.column_stack([X.ravel(), Y.ravel()])
     Z = func(grid).reshape(resolution, resolution)
-    Z_plot = np.log10(np.clip(Z, 1e-10, None)) if log_scale else Z
 
+    if log_scale:
+        Z_plot = np.log10(np.clip(Z, 1e-10, None))
+    else:
+        Z_plot = Z
+
+    # ===== Figure =====
     fig, ax = plt.subplots(figsize=(6, 5))
     fig.tight_layout(pad=1.5)
 
     ax.contourf(X, Y, Z_plot, levels=50, cmap="viridis")
     ax.contour(X, Y, Z_plot, levels=20, colors="white", linewidths=0.25, alpha=0.35)
+
     ax.set_xlim(low, high)
     ax.set_ylim(low, high)
-    ax.set_xlabel("x₁", fontsize=10)
-    ax.set_ylabel("x₂", fontsize=10)
 
-    scat   = ax.scatter([], [], c="#FE6100", s=dot_size, zorder=5,
-                        edgecolors="white", linewidths=0.5, alpha=0.85)
-    best_scat = ax.scatter([], [], c="#FFB000", s=120, marker="*", zorder=6,
-                           edgecolors="white", linewidths=0.8)
+    ax.set_xlabel("x", fontsize=10)
+    ax.set_ylabel("y", fontsize=10)
+
+    scat = ax.scatter(
+        [],
+        [],
+        c="#FE6100",
+        s=dot_size,
+        zorder=5,
+        edgecolors="white",
+        linewidths=0.5,
+        alpha=0.85,
+    )
+
+    best_scat = ax.scatter(
+        [],
+        [],
+        c="#FFB000",
+        s=120,
+        marker="*",
+        zorder=6,
+        edgecolors="white",
+        linewidths=0.8,
+    )
+
     title_txt = ax.set_title("", fontsize=11)
-    iter_text = ax.text(0.02, 0.96, "", transform=ax.transAxes,
-                        fontsize=9, color="white",
-                        verticalalignment="top",
-                        bbox=dict(boxstyle="round,pad=0.2", fc="black", alpha=0.4))
 
+    iter_text = ax.text(
+        0.02,
+        0.96,
+        "",
+        transform=ax.transAxes,
+        fontsize=9,
+        color="white",
+        verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.2", fc="black", alpha=0.4),
+    )
+
+    # ===== Animation update =====
     def _update(frame_num):
-        idx = frame_indices[frame_num]
-        pop = np.array(population_history[idx])
-        scat.set_offsets(pop[:, :2])
+
+        idx = min(frame_indices[frame_num], total_iters - 1)
+
+        pop = np.asarray(population_history[idx])
+
+        if pop.size > 0:
+            scat.set_offsets(pop[:, :2])
+
         if best_history is not None and idx < len(best_history):
-            bp = np.array(best_history[idx])
+            bp = np.asarray(best_history[idx])
             best_scat.set_offsets(bp[:2].reshape(1, 2))
+
         iter_text.set_text(f"iter {idx + 1}/{total_iters}")
-        title_txt.set_text(f"{algo_name}  —  frame {frame_num + 1}/{n_frames}")
+        title_txt.set_text(f"{algo_name} — frame {frame_num + 1}/{n_frames}")
+
         return scat, best_scat, iter_text, title_txt
 
+    # ===== Create animation =====
     ani = animation.FuncAnimation(
-        fig, _update, frames=n_frames, interval=1000 // fps, blit=True
+        fig,
+        _update,
+        frames=n_frames,
+        interval=1000 // fps,
+        blit=True,
     )
+
+    # ===== Save GIF =====
     ani.save(str(save_path), writer="pillow", fps=fps)
+
     plt.close(fig)
+
     print(f"GIF saved → {save_path}")
+
     return save_path
 
 
@@ -764,8 +820,8 @@ def make_trajectory_gif(
     ax.contour(X, Y, Z_plot, levels=20, colors="white", linewidths=0.25, alpha=0.35)
     ax.set_xlim(low, high)
     ax.set_ylim(low, high)
-    ax.set_xlabel("x₁", fontsize=10)
-    ax.set_ylabel("x₂", fontsize=10)
+    ax.set_xlabel("x", fontsize=10)
+    ax.set_ylabel("y", fontsize=10)
     ax.set_title(f"{algo_name} — Trajectory", fontsize=11)
 
     # Start marker
@@ -924,6 +980,69 @@ def plot_time_to_threshold(
 # 15.  Best vs average quality grouped bar
 # ---------------------------------------------------------------------------
 
+import pandas as pd
+import numpy as np
+from typing import Optional
+
+def table_best_vs_avg(
+    convergence_data: dict,
+    *,
+    dim: Optional[int] = None,
+    problem: str = "",
+    sort_by: str = "best",
+    display_table: bool = True,
+):
+    """
+    Create a table comparing Best Fitness and Final Average Fitness.
+
+    convergence_data : dict
+        {algo: result_dict} from flatten_for_dim()
+    """
+
+    rows = []
+
+    for algo, entry in convergence_data.items():
+
+        best = entry.get("best_fitness", np.nan)
+
+        avg_curve = entry.get("average_fitness_curve")
+        avg = (
+            avg_curve[-1]
+            if avg_curve is not None and len(avg_curve) > 0
+            else np.nan
+        )
+
+        rows.append({
+            "Algorithm": algo,
+            "Best Fitness": best,
+            "Avg Fitness (final)": avg,
+        })
+
+    df = pd.DataFrame(rows)
+
+    # Sort
+    if sort_by == "best":
+        df = df.sort_values("Best Fitness")
+    elif sort_by == "avg":
+        df = df.sort_values("Avg Fitness (final)")
+
+    df.reset_index(drop=True, inplace=True)
+
+    # Friendly formatting
+    df["Best Fitness"] = df["Best Fitness"].map(lambda x: f"{x:.6g}")
+    df["Avg Fitness (final)"] = df["Avg Fitness (final)"].map(lambda x: f"{x:.6g}")
+
+    if display_table:
+        title = f"Best vs Average Solution Quality"
+        if problem:
+            title += f" — {problem}"
+        if dim:
+            title += f" ({dim}D)"
+
+        print(title)
+
+    return df
+
 def plot_best_vs_avg(
     convergence_data: dict,
     *,
@@ -935,49 +1054,105 @@ def plot_best_vs_avg(
 ) -> plt.Axes:
     """
     Grouped bar chart comparing best_fitness and final average_fitness per algo.
-
-    convergence_data : dict  {algo: result_dict}  from flatten_for_dim()
     """
+
     ax = _get_ax(ax, figsize=(11, 5))
 
-    algos      = list(convergence_data.keys())
-    best_vals  = []
-    avg_vals   = []
+    algos = list(convergence_data.keys())
+    best_vals = []
+    avg_vals = []
 
     for algo in algos:
         entry = convergence_data[algo]
         best_vals.append(entry.get("best_fitness", np.nan))
-        avg_curve = entry.get("average_fitness_curve")
-        avg_vals.append(avg_curve[-1] if avg_curve is not None and len(avg_curve) > 0
-                        else np.nan)
 
-    x     = np.arange(len(algos))
+        avg_curve = entry.get("average_fitness_curve")
+        avg_vals.append(
+            avg_curve[-1] if avg_curve is not None and len(avg_curve) > 0 else np.nan
+        )
+
+    x = np.arange(len(algos))
     width = 0.38
 
-    bars1 = ax.bar(x - width / 2, best_vals, width, label="Best Fitness",
-                   color="#648FFF", alpha=0.85, edgecolor="white", linewidth=0.7)
-    bars2 = ax.bar(x + width / 2, avg_vals,  width, label="Avg Fitness (final)",
-                   color="#FE6100", alpha=0.85, edgecolor="white", linewidth=0.7)
+    bars1 = ax.bar(
+        x - width / 2,
+        best_vals,
+        width,
+        label="Best Fitness",
+        color="#648FFF",
+        alpha=0.85,
+        edgecolor="white",
+        linewidth=0.7,
+    )
 
-    # Value labels on bars
+    bars2 = ax.bar(
+        x + width / 2,
+        avg_vals,
+        width,
+        label="Avg Fitness (final)",
+        color="#FE6100",
+        alpha=0.85,
+        edgecolor="white",
+        linewidth=0.7,
+    )
+
+    # --- Friendly number formatting ---
+    def format_value(v):
+        if v >= 1:
+            return f"{v:.2f}"
+        elif v >= 0.01:
+            return f"{v:.3f}"
+        elif v >= 0.0001:
+            return f"{v:.5f}"
+        else:
+            return f"{v:.2e}"
+
+    # Value labels
     for bar in list(bars1) + list(bars2):
         h = bar.get_height()
         if np.isnan(h) or h <= 0:
             continue
-        ax.text(bar.get_x() + bar.get_width() / 2, h * 1.02,
-                f"{h:.2e}", ha="center", va="bottom", fontsize=7, rotation=45)
+
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            h * 1.05,
+            format_value(h),
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            rotation=30,
+        )
 
     if log_scale:
         ax.set_yscale("log")
+
     ax.set_xticks(x)
     ax.set_xticklabels(algos, rotation=30, ha="right", fontsize=11)
+
     ax.set_ylabel("Fitness", fontsize=12)
+
     dim_str = f" ({dim}D)" if dim else ""
-    ax.set_title(f"Best vs Average Solution Quality — {problem}{dim_str}", fontsize=13)
-    ax.legend(fontsize=11)
+
+    ax.set_title(
+        f"Best vs Average Solution Quality — {problem}{dim_str}",
+        fontsize=13,
+        pad=15,   # ← add padding from title
+    )
+
+    # Move legend outside
+    ax.legend(
+        fontsize=11,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1),
+        borderaxespad=0,
+    )
+
     ax.grid(True, axis="y", alpha=0.3)
 
+    plt.tight_layout()
+
     _save_or_show(ax.get_figure(), save_path)
+
     return ax
 
 
