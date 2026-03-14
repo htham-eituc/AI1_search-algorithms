@@ -15,7 +15,7 @@ from problems.discrete import SPProblem
 
 CASE_NAME = "obstacles_dense"
 CASE_PATH = Path(r"D:\Uni\IT\IntroToAI\AI1_search-algorithms\src\tests\SP\obstacles_dense")
-ALGORITHMS = ['DFS', 'BFS', 'UCS', 'GreedyBestFirst', 'AStarSearch']
+ALGORITHMS = ['DFS', 'BFS', 'ACO_Grid', 'GreedyBestFirst', 'AStarSearch', 'GA_Grid']
 OUTPUT_DIR = Path(r"D:\Uni\IT\IntroToAI\AI1_search-algorithms\src\outputs\grid_analysis")
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

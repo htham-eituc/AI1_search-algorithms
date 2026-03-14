@@ -386,16 +386,6 @@ import time
 
 
 class ACO_Grid(BaseAlgorithm):
-    """
-    Faster Ant Colony Optimization for grid pathfinding.
-
-    Simplifications for speed:
-    - Cell pheromone instead of edge pheromone
-    - Precomputed neighbors
-    - Precomputed Manhattan heuristic
-    - Boolean visited grid
-    - Vectorized evaporation
-    """
 
     def __init__(
         self,
@@ -408,7 +398,7 @@ class ACO_Grid(BaseAlgorithm):
         beta=3.0,
         rho=0.15,
         q=100.0,
-        elite_weight=2.0,
+        elite_weight=3.0,
         seed=None
     ):
         super().__init__("ACO_Grid")
@@ -438,12 +428,14 @@ class ACO_Grid(BaseAlgorithm):
         self.convergence_curve = np.zeros(max_iterations)
         self.diversity_curve = np.zeros(max_iterations)
 
+        # Manhattan heuristic
         self.heuristic = np.zeros((self.n, self.m))
 
         for r in range(self.n):
             for c in range(self.m):
                 self.heuristic[r, c] = abs(r - end_node[0]) + abs(c - end_node[1])
 
+        # Precompute neighbors
         self.neighbors = {}
 
         directions = [(-1,0),(1,0),(0,-1),(0,1)]
@@ -458,6 +450,7 @@ class ACO_Grid(BaseAlgorithm):
                 self.neighbors[cell] = []
 
                 for dr, dc in directions:
+
                     nr = r + dr
                     nc = c + dc
 
@@ -465,8 +458,10 @@ class ACO_Grid(BaseAlgorithm):
                         if self.grid[nr, nc] == 0:
                             self.neighbors[cell].append((nr, nc))
 
+
     def _path_length(self, path):
-        return float(len(path) - 1) if path else float("inf")
+        return float(len(path) - 1)
+
 
     def _construct_path(self, pheromone):
 
@@ -489,7 +484,9 @@ class ACO_Grid(BaseAlgorithm):
             candidates = []
 
             for nr, nc in neighbors:
-                if not visited[nr, nc]:
+
+                # allow small chance of revisiting to escape traps
+                if not visited[nr, nc] or np.random.rand() < 0.05:
                     candidates.append((nr, nc))
 
             if not candidates:
@@ -501,9 +498,15 @@ class ACO_Grid(BaseAlgorithm):
 
                 tau = pheromone[nr, nc]
 
+                # Manhattan heuristic
                 eta = 1.0 / (1.0 + self.heuristic[nr, nc])
 
-                probs.append((tau ** self.alpha) * (eta ** self.beta))
+                # Direction bias toward goal
+                dir_bias = 1.0 / (1.0 + abs(nr - self.end_node[0]) + abs(nc - self.end_node[1]))
+
+                score = (tau ** self.alpha) * (eta ** self.beta) * (1.0 + dir_bias)
+
+                probs.append(score)
 
             probs = np.array(probs)
 
@@ -524,6 +527,7 @@ class ACO_Grid(BaseAlgorithm):
 
         return None
 
+
     def solve(self):
 
         if self.seed is not None:
@@ -533,16 +537,21 @@ class ACO_Grid(BaseAlgorithm):
 
         pheromone = np.full((self.n, self.m), 0.1)
 
+        stagnation_counter = 0
+
         for iteration in range(self.max_iterations):
 
             paths = []
             fitnesses = []
+
             for _ in range(self.n_ants):
 
                 path = self._construct_path(pheromone)
 
                 if path is not None:
+
                     length = self._path_length(path)
+
                     paths.append(path)
                     fitnesses.append(length)
 
@@ -559,15 +568,33 @@ class ACO_Grid(BaseAlgorithm):
             iter_best_fitness = fitnesses[best_idx]
 
             if iter_best_fitness < self.best_fitness:
+
                 self.best_fitness = iter_best_fitness
                 self.best_solution = iter_best_path.copy()
 
+                stagnation_counter = 0
+
+            else:
+                stagnation_counter += 1
+
+            # Evaporation
             pheromone *= (1 - self.rho)
+
+            # Deposit pheromone for ALL ants (faster convergence)
+            for path, fit in zip(paths, fitnesses):
+
+                deposit = self.q / fit
+
+                for r, c in path:
+                    pheromone[r, c] += deposit * 0.2
+
+            # Iteration best reinforcement
             deposit = self.q / iter_best_fitness
 
             for r, c in iter_best_path:
                 pheromone[r, c] += deposit
 
+            # Elite reinforcement
             if self.best_solution is not None:
 
                 deposit = self.elite_weight * self.q / self.best_fitness
@@ -576,6 +603,10 @@ class ACO_Grid(BaseAlgorithm):
                     pheromone[r, c] += deposit
 
             self.convergence_curve[iteration] = self.best_fitness
+
+            # Early stopping (important for speed)
+            if stagnation_counter > 15:
+                break
 
         self.execution_time = time.time() - start_time
 
