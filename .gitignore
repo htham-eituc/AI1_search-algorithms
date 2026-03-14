@@ -7,6 +7,9 @@ src/tests/
 src/notebooks/outputs/
 
 src/outputs/
+src/results/
+
+*.pkl
 
 .vscode/
 
