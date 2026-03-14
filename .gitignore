@@ -6,6 +6,8 @@ src/tests/
 
 src/notebooks/outputs/
 
+src/outputs/
+
 .vscode/
 
 # Byte-compiled / optimized / DLL files
