@@ -1,5 +1,9 @@
 **/**/gen.cpp
 
+*.pkl 
+
+src/tests/
+
 src/notebooks/outputs/
 
 .vscode/
