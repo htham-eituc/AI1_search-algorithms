@@ -391,7 +391,7 @@
     "metrics": ["best_fitness", "mean_fitness", "std_fitness", "convergence_iteration"],
     "save_convergence_curve": true,
     "output_dir": "results/",
-    "test_discrete": true,
+    "test_discrete": false,
     "test_continuous": true,
     "discrete_algorithms": ["BFS", "DFS", "UCS", "Greedy", "A*", "GA_Grid", "ACO_Grid"]
   }

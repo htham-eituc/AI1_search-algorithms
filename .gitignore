@@ -2,6 +2,10 @@
 
 src/notebooks/outputs/
 
+src/results/
+
+*.pkl
+
 .vscode/
 
 # Byte-compiled / optimized / DLL files

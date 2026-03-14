@@ -98,7 +98,7 @@ ALGORITHM_PROBLEM_MAP = {
 }
 
 
-def load_config(config_path="config.json"):
+def load_config(config_path="utils/config.json"):
     """Load configuration from JSON file."""
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
@@ -238,183 +238,158 @@ def _run_grid_experiment(algo_name, problem_name, test_file, config, verbose):
 
 
 def _run_continuous_experiment(algo_name, problem_name, dimensions, config, verbose):
-    """Run experiment on continuous optimization problem."""
-    # Get objective function
+    """
+    Run experiment on continuous optimization problem.
+
+    FAIRNESS: All algorithms use the same max_iter (MAX_ITER_STANDARD = 1000).
+    SA cooling_rate and HC step_decay are adjusted by fairness.py so their
+    schedules remain meaningful over 1000 steps.
+    """
+    from utils.fairness import build_fair_params, MAX_ITER_STANDARD
+
     objective_func = PROBLEM_FUNCTIONS[problem_name]
-    
-    # Get search space
-    bounds_range = get_problem_bounds(problem_name, config)
-    bounds = np.array([bounds_range for _ in range(dimensions)])
-    
-    # Get algorithm parameters
-    params = get_algorithm_params(algo_name, problem_name, dimensions, config)
-    
-    # Initialize algorithm based on type
+    bounds_range   = get_problem_bounds(problem_name, config)
+    bounds         = np.array([bounds_range for _ in range(dimensions)])
+
+    # build_fair_params:
+    #   - sets max_iterations = MAX_ITER_STANDARD (1000) for every algorithm
+    #   - adjusts SA cooling_rate so schedule spans all 1000 steps
+    #   - adjusts HC step_decay  so step_size decays properly over 1000 steps
+    #   - all other params come from config defaults + problem overrides
+    p          = build_fair_params(algo_name, problem_name, dimensions,
+                                   config, MAX_ITER_STANDARD)
+    pop        = p.get("population_size", 50)
+    max_iter   = p["max_iterations"]       # always MAX_ITER_STANDARD
     algo_class = ALGORITHM_CLASSES[algo_name]
-    
+
     if algo_name == "DE":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            F=params.get("mutation_factor", 0.8),
-            CR=params.get("crossover_rate", 0.9)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            F=p.get("mutation_factor", 0.8),
+            CR=p.get("crossover_rate", 0.9),
         )
     elif algo_name == "GA":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            crossover_rate=params.get("crossover_rate", 0.8),
-            mutation_rate=params.get("mutation_rate", 0.1),
-            mutation_scale=params.get("mutation_scale", 0.1),
-            tournament_size=params.get("tournament_size", 3)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            crossover_rate=p.get("crossover_rate", 0.8),
+            mutation_rate=p.get("mutation_rate", 0.1),
+            mutation_scale=p.get("mutation_scale", 0.1),
+            tournament_size=p.get("tournament_size", 3),
         )
     elif algo_name == "SA":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 5000),
-            bounds=bounds,
-            dim=dimensions,
-            initial_temperature=params.get("initial_temperature", 1000.0),
-            cooling_rate=params.get("cooling_rate", 0.95),
-            cooling_schedule=params.get("cooling_schedule", "geometric")
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=p.get("population_size", 10),
+            max_iter=max_iter,
+            initial_temperature=p.get("initial_temperature", 1000.0),
+            cooling_rate=p["cooling_rate"],         # ← adjusted by fairness.py
+            cooling_schedule=p.get("cooling_schedule", "geometric"),
         )
     elif algo_name == "GSA":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            G0=params.get("gravitational_constant", 100.0),
-            kbest_initial=params.get("alpha", 20)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            G0=p.get("gravitational_constant", 100.0),
+            kbest_initial=p.get("alpha", 20),
         )
     elif algo_name == "ABC":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            limit=params.get("limit", None)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            limit=p.get("limit", None),
         )
     elif algo_name == "CS":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            pa=params.get("pa", 0.25),
-            alpha=params.get("alpha", 0.01),
-            lambda_levy=params.get("lambda_levy", 1.5)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            pa=p.get("pa", 0.25),
+            alpha=p.get("alpha", 0.01),
+            lambda_levy=p.get("lambda_levy", 1.5),
         )
     elif algo_name == "FA":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            beta0=params.get("beta0", 1.0),
-            gamma=params.get("gamma", 1.0),
-            alpha=params.get("alpha", 0.5),
-            alpha_decay=params.get("alpha_decay", 0.97)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            beta0=p.get("beta0", 1.0),
+            gamma=p.get("gamma", 1.0),
+            alpha=p.get("alpha", 0.5),
+            alpha_decay=p.get("alpha_decay", 0.97),
         )
     elif algo_name == "PSO":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            w_max=params.get("w_max", 0.9),
-            w_min=params.get("w_min", 0.4),
-            c1=params.get("c1", 2.0),
-            c2=params.get("c2", 2.0),
-            v_clamp_ratio=params.get("v_clamp_ratio", 0.2)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            w_max=p.get("w_max", 0.9),
+            w_min=p.get("w_min", 0.4),
+            c1=p.get("c1", 2.0),
+            c2=p.get("c2", 2.0),
+            v_clamp_ratio=p.get("v_clamp_ratio", 0.2),
         )
     elif algo_name == "ACOR":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            Ar_k=params.get("archive_size", 20),
-            xi=params.get("xi", 0.85),
-            q=params.get("q", 2)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            Ar_k=p.get("archive_size", 20),
+            xi=p.get("xi", 0.85),
+            q=p.get("q", 2),
         )
     elif algo_name == "HC":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 10),
-            max_iter=params.get("max_iterations", 5000),
-            bounds=bounds,
-            dim=dimensions,
-            step_size=params.get("step_size", 0.5),
-            step_decay=params.get("step_decay", 0.995),
-            max_restarts=params.get("max_restarts", 10),
-            patience=params.get("patience", 30)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=p.get("population_size", 10),
+            max_iter=max_iter,
+            step_size=p.get("step_size", 0.5),
+            step_decay=p["step_decay"],             # ← adjusted by fairness.py
+            max_restarts=p.get("max_restarts", 10),
+            patience=p.get("patience", 30),
         )
     elif algo_name == "TLBO":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
         )
     elif algo_name == "SFO":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            desired_speed=params.get("desired_speed", 0.8),
-            tau=params.get("tau", 0.5),
-            A=params.get("A", 2.0),
-            B=params.get("B", 0.3),
-            r_agent=params.get("r_agent", 0.5),
-            dt=params.get("dt", 0.1),
-            v_max=params.get("v_max", 2.0)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            desired_speed=p.get("desired_speed", 0.8),
+            tau=p.get("tau", 0.5),
+            A=p.get("A", 2.0),
+            B=p.get("B", 0.3),
+            r_agent=p.get("r_agent", 0.5),
+            dt=p.get("dt", 0.1),
+            v_max=p.get("v_max", 2.0),
         )
     elif algo_name == "CA":
         algo = algo_class(
-            objective_func=objective_func,
-            pop_size=params.get("population_size", 50),
-            max_iter=params.get("max_iterations", 1000),
-            bounds=bounds,
-            dim=dimensions,
-            alpha=params.get("alpha", 0.2)
+            objective_func=objective_func, bounds=bounds, dim=dimensions,
+            pop_size=pop, max_iter=max_iter,
+            alpha=p.get("alpha", 0.2),
         )
-    
-    # Run solver
+
     results = algo.solve()
-    
-    # Print results
+
     if verbose:
-        print(f"Algorithm: {results['algorithm']}")
-        print(f"Execution Time: {results['execution_time_seconds']:.5f} seconds")
-        print(f"Best Fitness Achieved: {results['best_fitness']:.5e}")
-        print(f"Final Average Fitness: {results['average_fitness_curve'][-1]:.5e}")
-        print(f"Final Diversity: {results['diversity_curve'][-1]:.5e}")
-        print(f"Best Solution (first 3 dims): {results['best_solution'][:3]}")
-        
+        from utils.fairness import evals_per_iter
+        epi = evals_per_iter(algo_name, dimensions, pop)
+        print(f"Algorithm:            {results['algorithm']}")
+        print(f"max_iter:             {max_iter}  (equal for all algorithms)")
+        print(f"Evals/iter:           {epi}  |  Total NFE: {epi * max_iter:,}")
+        print(f"Execution Time:       {results['execution_time_seconds']:.5f} s")
+        print(f"Best Fitness:         {results['best_fitness']:.5e}")
+        print(f"Final Avg Fitness:    {results['average_fitness_curve'][-1]:.5e}")
+        print(f"Final Diversity:      {results['diversity_curve'][-1]:.5e}")
+        print(f"Best Solution (3D):   {results['best_solution'][:3]}")
+
         problem_config = config["problems"][problem_name]
-        global_min = problem_config["global_minimum"]
-        tolerance = problem_config["tolerance"]
-        print(f"Global Minimum: {global_min}")
-        print(f"Tolerance: {tolerance}")
-        print(f"Success: {abs(results['best_fitness'] - global_min) < tolerance}")
-    
+        global_min     = problem_config["global_minimum"]
+        tolerance      = problem_config["tolerance"]
+        print(f"Global Minimum:       {global_min}")
+        print(f"Tolerance:            {tolerance}")
+        print(f"Success:              {abs(results['best_fitness'] - global_min) < tolerance}")
+
     return results
 
 
@@ -474,18 +449,18 @@ def run_all_experiments(config, max_workers=None):
             tasks.append((algo_name, problem_name, config, dimensions, None))
     
     # Add grid problem tasks with automatic test file discovery
-    if config["experiment"].get("test_discrete", False):
-        discrete_algorithms = config["experiment"].get("discrete_algorithms", [])
+    # if config["experiment"].get("test_discrete", False):
+    #     discrete_algorithms = config["experiment"].get("discrete_algorithms", [])
         
-        # Discover all test files for grid problem
-        test_files = discover_test_files("grid", config)
+    #     # Discover all test files for grid problem
+    #     test_files = discover_test_files("grid", config)
         
-        if not test_files:
-            print("Warning: No test files found for grid problem matching the configured pattern.")
+    #     if not test_files:
+    #         print("Warning: No test files found for grid problem matching the configured pattern.")
         
-        for test_file in test_files:
-            for algo_name in discrete_algorithms:
-                tasks.append((algo_name, "grid", config, None, test_file))
+    #     for test_file in test_files:
+    #         for algo_name in discrete_algorithms:
+    #             tasks.append((algo_name, "grid", config, None, test_file))
     
     # Run experiments in parallel using processes
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
