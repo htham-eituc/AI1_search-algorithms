@@ -173,6 +173,7 @@ class CA(BaseMetaheuristic):
             self.convergence_curve[t]     = self.best_fitness
             self.average_fitness_curve[t] = fitness.mean()
             self.diversity_curve[t]       = _diversity(pop)
+            self.population_history.append(pop.copy())
 
         self.execution_time = time.time() - t0
         return self.get_results()

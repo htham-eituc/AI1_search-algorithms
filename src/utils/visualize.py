@@ -588,7 +588,7 @@ def plot_trajectory_2d(
     Draw contour landscape with agent trajectory lines overlaid.
 
     Parameters
-    ----------
+    ----------  
     trajectories : dict  {algo_name: list_of_positions}
         Each value is a list / array of shape (T, 2) — the path walked.
         For HC/SA extracted from population_history[:, best_idx, :].

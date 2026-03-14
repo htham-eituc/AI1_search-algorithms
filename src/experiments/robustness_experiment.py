@@ -1,7 +1,9 @@
 """
 robustness_experiment.py
 ========================
-Runs 30 independent trials per (algorithm, dimension) for Rosenbrock.
+Runs 30 independent trials per (algorithm, dimension) for:
+  - Rosenbrock (all configured dims)
+  - Rastrigin  (30D only)
 
 FAIRNESS
 --------
@@ -12,14 +14,16 @@ length 1000 → directly comparable on the same x-axis.
 
 Outputs
 -------
-  results/robustness_rosenbrock.csv   (summary: mean/std/min/max per algo×dim)
-  results/robustness_rosenbrock.pkl   (raw runs including convergence curves)
+  results/robustness_rosenbrock.csv  /  .pkl
+  results/robustness_rastrigin.csv   /  .pkl
 
-Rosenbrock algorithms:
-  Classic : HC, SA
-  Evo     : GA, DE
-  Biology : ABC, PSO
-  Human   : SFO, TLBO
+PKL structure:
+  { "raw":     list[dict],   ← one dict per successful run
+    "summary": list[dict] }  ← aggregated stats per (algo, dim)
+
+Each raw dict contains:
+  algorithm, dimensions, run (seed), best_fitness, execution_time,
+  convergence_curve (len=MAX_ITER_STANDARD), max_iter, evals_per_iter, nfe
 """
 
 import os
@@ -47,10 +51,23 @@ from utils.fairness import (
     MAX_ITER_STANDARD,
 )
 
-ROSENBROCK_ALGOS = ["HC", "SA", "GA", "DE", "ABC", "PSO", "SFO", "TLBO"]
-N_RUNS           = 30
-PROBLEM_NAME     = "rosenbrock"
-RESULTS_DIR      = ROOT / "results"
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-problem configuration
+# ─────────────────────────────────────────────────────────────────────────────
+
+PROBLEM_CONFIG = {
+    "rosenbrock": {
+        "algos": ["HC", "SA", "GA", "DE", "ABC", "PSO", "SFO", "TLBO"],
+        "dims" : None,   # None → use config["problems"]["rosenbrock"]["dimensions"]
+    },
+    "rastrigin": {
+        "algos": ["HC", "SA", "GA", "DE", "ABC", "FA", "CS", "CA"],
+        "dims" : [30],   # fixed to 30D only
+    },
+}
+
+N_RUNS      = 30
+RESULTS_DIR = ROOT / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -105,6 +122,29 @@ def _single_run(args):
                 pop_size=pop, max_iter=max_iter,
                 limit=p.get("limit", None))
 
+        elif algo_name == "FA":
+            algo = algo_class(
+                objective_func=objective_func, bounds=bounds, dim=dimensions,
+                pop_size=pop, max_iter=max_iter,
+                beta0=p.get("beta0", 1.0),
+                gamma=p.get("gamma", 1.0),
+                alpha=p.get("alpha", 0.5),
+                alpha_decay=p.get("alpha_decay", 0.97))
+
+        elif algo_name == "CS":
+            algo = algo_class(
+                objective_func=objective_func, bounds=bounds, dim=dimensions,
+                pop_size=pop, max_iter=max_iter,
+                pa=p.get("pa", 0.25),
+                alpha=p.get("alpha", 0.01),
+                lambda_levy=p.get("lambda_levy", 1.5))
+
+        elif algo_name == "CA":
+            algo = algo_class(
+                objective_func=objective_func, bounds=bounds, dim=dimensions,
+                pop_size=pop, max_iter=max_iter,
+                alpha=p.get("alpha", 0.2))
+
         elif algo_name == "PSO":
             algo = algo_class(
                 objective_func=objective_func, bounds=bounds, dim=dimensions,
@@ -146,55 +186,62 @@ def _single_run(args):
             raise ValueError(f"Unknown algorithm: {algo_name}")
 
         result = algo.solve()
+        epi    = evals_per_iter(algo_name, dimensions, pop)
 
         return {
             "algorithm"        : algo_name,
+            "problem"          : problem_name,
             "dimensions"       : dimensions,
             "run"              : seed,
             "best_fitness"     : result["best_fitness"],
             "execution_time"   : result["execution_time_seconds"],
             "convergence_curve": result.get("convergence_curve"),
             "max_iter"         : max_iter,
-            "evals_per_iter"   : evals_per_iter(algo_name, dimensions, pop),
-            "nfe"              : evals_per_iter(algo_name, dimensions, pop) * max_iter,
+            "evals_per_iter"   : epi,
+            "nfe"              : epi * max_iter,
         }
 
     except Exception as exc:
-        print(f"  [ERROR] {algo_name} dim={dimensions} seed={seed}: {exc}", flush=True)
+        print(f"  [ERROR] {algo_name} {problem_name} dim={dimensions} "
+              f"seed={seed}: {exc}", flush=True)
         return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Main
+# Per-problem runner
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_robustness(config, n_runs=N_RUNS, max_workers=None):
+def run_robustness_for(problem_name, config, n_runs=N_RUNS, max_workers=None):
+    """
+    Run N_RUNS trials for every (algorithm, dimension) of one problem.
+    Returns (raw_results, summary).
+    """
     if max_workers is None:
         max_workers = max(1, os.cpu_count() - 1)
 
-    problem_config  = config["problems"][PROBLEM_NAME]
-    dimensions_list = problem_config.get("dimensions",
-                                         config["experiment"]["dimensions"])
+    spec            = PROBLEM_CONFIG[problem_name]
+    algos           = spec["algos"]
+    dimensions_list = (spec["dims"]
+                       if spec["dims"] is not None
+                       else config["problems"][problem_name].get(
+                           "dimensions", config["experiment"]["dimensions"]))
 
-    # Show fairness table before starting
-    print_fairness_table(ROSENBROCK_ALGOS, dim=dimensions_list[0],
-                         max_iter=MAX_ITER_STANDARD)
+    print_fairness_table(algos, dim=dimensions_list[0], max_iter=MAX_ITER_STANDARD)
 
     tasks = []
-    for algo in ROSENBROCK_ALGOS:
+    for algo in algos:
         if algo not in config["algorithms"]:
-            print(f"[WARN] {algo} not in config, skipping.")
+            print(f"  [WARN] {algo} not in config, skipping.")
             continue
         for dim in dimensions_list:
             for run_idx in range(n_runs):
-                # Deterministic but unique seed per (algo, dim, run)
                 seed = run_idx * 1000 + abs(hash(algo + str(dim))) % 1000
-                tasks.append((algo, PROBLEM_NAME, dim, config, seed))
+                tasks.append((algo, problem_name, dim, config, seed))
 
     total = len(tasks)
-    print(f"Robustness: {total} tasks  "
-          f"({len(ROSENBROCK_ALGOS)} algos × {len(dimensions_list)} dims "
-          f"× {n_runs} runs)  workers={max_workers}\n")
+    print(f"[{problem_name.upper()}] {total} tasks  "
+          f"({len(algos)} algos × {len(dimensions_list)} dims × {n_runs} runs)  "
+          f"workers={max_workers}\n")
 
     raw_results = []
     completed   = 0
@@ -209,7 +256,7 @@ def run_robustness(config, n_runs=N_RUNS, max_workers=None):
             if completed % 50 == 0 or completed == total:
                 print(f"  Progress: {completed}/{total}", flush=True)
 
-    # ── Aggregate ─────────────────────────────────────────────────────
+    # ── Aggregate ─────────────────────────────────────────────────────────────
     buckets = defaultdict(list)
     for r in raw_results:
         buckets[(r["algorithm"], r["dimensions"])].append(r)
@@ -220,7 +267,7 @@ def run_robustness(config, n_runs=N_RUNS, max_workers=None):
         times     = np.array([r["execution_time"] for r in runs])
         summary.append({
             "algorithm"     : algo,
-            "problem"       : PROBLEM_NAME,
+            "problem"       : problem_name,
             "dimensions"    : dim,
             "n_runs"        : len(runs),
             "max_iter"      : MAX_ITER_STANDARD,
@@ -237,29 +284,36 @@ def run_robustness(config, n_runs=N_RUNS, max_workers=None):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Save / print
+# Save helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def save_results(raw_results, summary):
-    csv_path   = RESULTS_DIR / "robustness_rosenbrock.csv"
-    fieldnames = ["algorithm", "problem", "dimensions", "n_runs", "max_iter", "nfe",
-                  "mean_fitness", "std_fitness", "min_fitness",
-                  "max_fitness", "median_fitness", "mean_time"]
+CSV_FIELDS = ["algorithm", "problem", "dimensions", "n_runs", "max_iter", "nfe",
+              "mean_fitness", "std_fitness", "min_fitness",
+              "max_fitness", "median_fitness", "mean_time"]
+
+
+def save_results(raw_results, summary, problem_name):
+    csv_path = RESULTS_DIR / f"robustness_{problem_name}.csv"
     with open(csv_path, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
         writer.writeheader()
         writer.writerows(summary)
-    print(f"Summary CSV → {csv_path}")
+    print(f"  CSV → {csv_path}")
 
-    pkl_path = RESULTS_DIR / "robustness_rosenbrock.pkl"
+    pkl_path = RESULTS_DIR / f"robustness_{problem_name}.pkl"
     with open(pkl_path, "wb") as f:
         pickle.dump({"raw": raw_results, "summary": summary}, f)
-    print(f"Raw PKL     → {pkl_path}")
+    print(f"  PKL → {pkl_path}  ({pkl_path.stat().st_size / 1024:.0f} KB)")
 
 
-def print_robustness_table(summary):
+# ─────────────────────────────────────────────────────────────────────────────
+# Print table
+# ─────────────────────────────────────────────────────────────────────────────
+
+def print_robustness_table(summary, problem_name):
     print(f"\n{'='*108}")
-    print(f"ROBUSTNESS — Rosenbrock  (max_iter={MAX_ITER_STANDARD}, 30 runs)")
+    print(f"ROBUSTNESS — {problem_name.upper()}  "
+          f"(max_iter={MAX_ITER_STANDARD}, {N_RUNS} runs)")
     print(f"{'='*108}")
     print(f"{'Algorithm':<10} {'Dims':<6} {'NFE':>8} {'Mean':>14} {'Std':>14} "
           f"{'Min':>14} {'Median':>14} {'Time(s)':>9}")
@@ -276,14 +330,46 @@ def print_robustness_table(summary):
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Run 30-run robustness experiment for Rosenbrock and/or Rastrigin"
+    )
+    parser.add_argument(
+        "problems", nargs="*",
+        choices=list(PROBLEM_CONFIG.keys()),
+        help="Problems to run (default: all)",
+    )
+    parser.add_argument("--workers", type=int, default=None)
+    parser.add_argument("--runs",    type=int, default=N_RUNS,
+                        help=f"Number of independent runs (default: {N_RUNS})")
+    args = parser.parse_args()
+
+    problems_to_run = args.problems or list(PROBLEM_CONFIG.keys())
+
     config_path = ROOT / "utils/config.json"
     config      = load_config(config_path)
     np.random.seed(config["experiment"]["seed"])
 
     print("=" * 72)
-    print(f"ROBUSTNESS EXPERIMENT  |  max_iter={MAX_ITER_STANDARD} (all algorithms)")
+    print(f"ROBUSTNESS EXPERIMENT  |  max_iter={MAX_ITER_STANDARD}  runs={args.runs}")
+    print(f"Problems: {problems_to_run}")
     print("=" * 72)
 
-    raw_results, summary = run_robustness(config)
-    save_results(raw_results, summary)
-    print_robustness_table(summary)
+    for problem in problems_to_run:
+        print(f"\n{'─'*72}")
+        print(f"Running: {problem.upper()}")
+        print(f"{'─'*72}")
+
+        raw, summary = run_robustness_for(
+            problem, config,
+            n_runs=args.runs,
+            max_workers=args.workers,
+        )
+        save_results(raw, summary, problem)
+        print_robustness_table(summary, problem)
+
+    print("\nDone.")
+    print("Load in notebook:")
+    print("  rob = load_pkl('results/robustness_rastrigin.pkl')")
+    print("  rob_raw, rob_summary = rob['raw'], load_summary_csv('results/robustness_rastrigin.csv')")
