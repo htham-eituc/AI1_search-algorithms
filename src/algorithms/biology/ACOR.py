@@ -381,16 +381,20 @@ class ACO_TSP:
 #  ACO_Grid — Ant Colony Optimization for Grid Pathfinding
 # ==============================================================================
 
+import numpy as np
+import time
+
+
 class ACO_Grid(BaseAlgorithm):
     """
-    Research-grade Ant Colony Optimization for grid pathfinding.
+    Faster Ant Colony Optimization for grid pathfinding.
 
-    Improvements:
-    - Edge pheromone model
-    - Loop prevention
-    - Elitist global reinforcement
-    - Adaptive evaporation
-    - Diversity tracking
+    Simplifications for speed:
+    - Cell pheromone instead of edge pheromone
+    - Precomputed neighbors
+    - Precomputed Manhattan heuristic
+    - Boolean visited grid
+    - Vectorized evaporation
     """
 
     def __init__(
@@ -398,8 +402,8 @@ class ACO_Grid(BaseAlgorithm):
         grid,
         start_node,
         end_node,
-        n_ants=30,
-        max_iterations=150,
+        n_ants=20,
+        max_iterations=100,
         alpha=1.0,
         beta=3.0,
         rho=0.15,
@@ -410,7 +414,7 @@ class ACO_Grid(BaseAlgorithm):
         super().__init__("ACO_Grid")
 
         self.grid = np.array(grid)
-        self.n, self.m = grid.shape
+        self.n, self.m = self.grid.shape
 
         self.start_node = start_node
         self.end_node = end_node
@@ -434,88 +438,91 @@ class ACO_Grid(BaseAlgorithm):
         self.convergence_curve = np.zeros(max_iterations)
         self.diversity_curve = np.zeros(max_iterations)
 
-    # ---------------------------------------------------------
-    # Utility
-    # ---------------------------------------------------------
+        self.heuristic = np.zeros((self.n, self.m))
 
-    def _heuristic(self, cell):
-        """Manhattan distance heuristic."""
-        return abs(cell[0] - self.end_node[0]) + abs(cell[1] - self.end_node[1])
+        for r in range(self.n):
+            for c in range(self.m):
+                self.heuristic[r, c] = abs(r - end_node[0]) + abs(c - end_node[1])
 
-    def _get_neighbors(self, cell):
-        r, c = cell
-        neighbors = []
+        self.neighbors = {}
 
         directions = [(-1,0),(1,0),(0,-1),(0,1)]
 
-        for dr, dc in directions:
-            nr = r + dr
-            nc = c + dc
+        for r in range(self.n):
+            for c in range(self.m):
 
-            if 0 <= nr < self.n and 0 <= nc < self.m:
-                if self.grid[nr, nc] == 0:
-                    neighbors.append((nr, nc))
+                if self.grid[r, c] != 0:
+                    continue
 
-        return neighbors
+                cell = (r, c)
+                self.neighbors[cell] = []
+
+                for dr, dc in directions:
+                    nr = r + dr
+                    nc = c + dc
+
+                    if 0 <= nr < self.n and 0 <= nc < self.m:
+                        if self.grid[nr, nc] == 0:
+                            self.neighbors[cell].append((nr, nc))
 
     def _path_length(self, path):
-        return float(len(path)-1) if path else float("inf")
-
-    # ---------------------------------------------------------
-    # Ant path construction
-    # ---------------------------------------------------------
+        return float(len(path) - 1) if path else float("inf")
 
     def _construct_path(self, pheromone):
 
-        visited = set()
+        visited = np.zeros((self.n, self.m), dtype=bool)
+
         path = [self.start_node]
 
-        current = self.start_node
-        visited.add(current)
+        r, c = self.start_node
+        visited[r, c] = True
 
-        max_steps = self.n * self.m
+        max_steps = (self.n + self.m) * 2
 
         for _ in range(max_steps):
 
-            if current == self.end_node:
+            if (r, c) == self.end_node:
                 return path
 
-            neighbors = self._get_neighbors(current)
+            neighbors = self.neighbors[(r, c)]
 
-            neighbors = [n for n in neighbors if n not in visited]
+            candidates = []
 
-            if not neighbors:
+            for nr, nc in neighbors:
+                if not visited[nr, nc]:
+                    candidates.append((nr, nc))
+
+            if not candidates:
                 return None
 
             probs = []
 
-            for neighbor in neighbors:
+            for nr, nc in candidates:
 
-                tau = pheromone[current][neighbor]
+                tau = pheromone[nr, nc]
 
-                eta = 1.0 / (1.0 + self._heuristic(neighbor))
+                eta = 1.0 / (1.0 + self.heuristic[nr, nc])
 
                 probs.append((tau ** self.alpha) * (eta ** self.beta))
 
-            probs = np.array(probs, dtype=float)
+            probs = np.array(probs)
 
             total = probs.sum()
 
             if total == 0:
-                next_cell = neighbors[np.random.randint(len(neighbors))]
+                idx = np.random.randint(len(candidates))
             else:
                 probs /= total
-                next_cell = neighbors[np.random.choice(len(neighbors), p=probs)]
+                idx = np.random.choice(len(candidates), p=probs)
 
-            path.append(next_cell)
-            visited.add(next_cell)
-            current = next_cell
+            nr, nc = candidates[idx]
+
+            path.append((nr, nc))
+            visited[nr, nc] = True
+
+            r, c = nr, nc
 
         return None
-
-    # ---------------------------------------------------------
-    # Solve
-    # ---------------------------------------------------------
 
     def solve(self):
 
@@ -524,26 +531,12 @@ class ACO_Grid(BaseAlgorithm):
 
         start_time = time.time()
 
-        # Edge pheromone dictionary
-        pheromone = {}
-
-        for r in range(self.n):
-            for c in range(self.m):
-                if self.grid[r,c] == 0:
-                    cell = (r,c)
-                    pheromone[cell] = {}
-                    for n in self._get_neighbors(cell):
-                        pheromone[cell][n] = 0.1
+        pheromone = np.full((self.n, self.m), 0.1)
 
         for iteration in range(self.max_iterations):
 
             paths = []
             fitnesses = []
-
-            # -------------------------
-            # Construct solutions
-            # -------------------------
-
             for _ in range(self.n_ants):
 
                 path = self._construct_path(pheromone)
@@ -565,54 +558,28 @@ class ACO_Grid(BaseAlgorithm):
             iter_best_path = paths[best_idx]
             iter_best_fitness = fitnesses[best_idx]
 
-            # Update global best
             if iter_best_fitness < self.best_fitness:
                 self.best_fitness = iter_best_fitness
                 self.best_solution = iter_best_path.copy()
 
-            # -------------------------
-            # Evaporation
-            # -------------------------
-
-            for u in pheromone:
-                for v in pheromone[u]:
-                    pheromone[u][v] *= (1 - self.rho)
-
-            # -------------------------
-            # Iteration-best deposit
-            # -------------------------
-
+            pheromone *= (1 - self.rho)
             deposit = self.q / iter_best_fitness
 
-            for i in range(len(iter_best_path)-1):
-                u = iter_best_path[i]
-                v = iter_best_path[i+1]
-
-                pheromone[u][v] += deposit
-
-            # -------------------------
-            # Global-best reinforcement
-            # -------------------------
+            for r, c in iter_best_path:
+                pheromone[r, c] += deposit
 
             if self.best_solution is not None:
 
                 deposit = self.elite_weight * self.q / self.best_fitness
 
-                for i in range(len(self.best_solution)-1):
-                    u = self.best_solution[i]
-                    v = self.best_solution[i+1]
-
-                    pheromone[u][v] += deposit
+                for r, c in self.best_solution:
+                    pheromone[r, c] += deposit
 
             self.convergence_curve[iteration] = self.best_fitness
 
         self.execution_time = time.time() - start_time
 
         return self
-
-    # ---------------------------------------------------------
-    # Results
-    # ---------------------------------------------------------
 
     def get_results(self):
 
@@ -623,6 +590,6 @@ class ACO_Grid(BaseAlgorithm):
             "execution_time_seconds": self.execution_time,
             "convergence_curve": self.convergence_curve,
             "diversity_curve": self.diversity_curve,
-            "time_complexity": "O(max_iter * n_ants * grid_size)",
+            "time_complexity": "O(iter * ants * path_length)",
             "space_complexity": "O(grid_size)"
         }

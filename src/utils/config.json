@@ -349,15 +349,16 @@
     "GA_Grid": {
       "name": "Genetic Algorithm for Grid",
       "defaults": {
-        "max_iterations": 100,
+        "max_iterations": 300,
         "population_size": 30,
         "mutation_rate": 0.2,
-        "runs": 5
+        "runs": 5,
+        "pop_size": 30,
+        "max_iter": 500
       },
       "problem_overrides": {
         "grid": {
-          "pop_size": 30,
-          "max_iter": 100,
+          
           "mutation_rate": 0.2
         }
       }
@@ -366,7 +367,7 @@
     "ACO_Grid": {
       "name": "Ant Colony Optimization for Grid",
       "defaults": {
-        "max_iterations": 100,
+        "max_iterations": 300,
         "n_ants": 20,
         "alpha": 0.5,
         "beta": 1.5,
@@ -376,7 +377,6 @@
       },
       "problem_overrides": {
         "grid": {
-          "n_ants": 20,
           "max_iterations": 100,
           "alpha": 0.5,
           "beta": 1.5

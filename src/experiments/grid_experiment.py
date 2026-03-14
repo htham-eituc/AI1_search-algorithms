@@ -161,12 +161,12 @@ class GridExperiment:
                             self.problem.end_node, record_frontier=record_frontier)
         elif algorithm_name in ['GA_Grid']:
             # Use config for GA parameters
-            ga_config = self.config['algorithms']['GA_Grid']
+            ga_config = self.config['algorithms']['GA_Grid']['defaults']
             algo = algo_class(self.problem.grid, self.problem.start_node, self.problem.end_node,
                             pop_size=ga_config['pop_size'], max_iter=ga_config['max_iter'])
         elif algorithm_name in ['ACO_Grid']:
             # Use config for ACO parameters
-            aco_config = self.config['algorithms']['ACO_Grid']
+            aco_config = self.config['algorithms']['ACO_Grid']['defaults']
             algo = algo_class(self.problem.grid, self.problem.start_node, self.problem.end_node,
                             n_ants=aco_config['n_ants'], max_iterations=aco_config['max_iterations'])
         else:

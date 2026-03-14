@@ -60,7 +60,7 @@ def create_grid_animation(trace: Dict, algorithm: str, interval: int = 200,
         )
 
     result = trace['algorithms'][algorithm]
-    grid = trace['grid']
+    grid = trace['problem_grid']
     start = trace['start_node']
     end = trace['end_node']
 
@@ -204,7 +204,7 @@ def display_grid(
     start_node=None,
     end_node=None,
     title="Grid Visualization",
-    show_grid=True,
+    show_grid=False,
     figsize=(8, 8)
 ):
     """
@@ -271,7 +271,7 @@ def plot_path_comparison(trace: Dict, algorithms: Optional[List[str]] = None,
     if algorithms is None:
         algorithms = list(trace['algorithms'].keys())
 
-    grid = trace['grid']
+    grid = trace['problem_grid']
     start = trace['start_node']
     end = trace['end_node']
 
