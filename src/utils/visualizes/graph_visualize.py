@@ -57,14 +57,15 @@ ALGO_COLORS = {
     "SA_TSP":           "#FF9800",
     "ACO_TSP":          "#4CAF50",
     "HillClimbing_TSP": "#9C27B0",
+    "A_STAR_TSP":       "#00BCD4",
 }
 ALGO_MARKERS = {
     "CA_TSP": "o", "GA_TSP": "s", "SA_TSP": "^",
-    "ACO_TSP": "D", "HillClimbing_TSP": "P",
+    "ACO_TSP": "D", "HillClimbing_TSP": "P", "A_STAR_TSP": "*",
 }
 ALGO_SHORT = {
     "CA_TSP": "CA", "GA_TSP": "GA", "SA_TSP": "SA",
-    "ACO_TSP": "ACO", "HillClimbing_TSP": "HC",
+    "ACO_TSP": "ACO", "HillClimbing_TSP": "HC", "A_STAR_TSP": "A*",
 }
 CASE_COLOR = {
     "sparse": "#607D8B", "clustered": "#8BC34A", "euclidean": "#FF5722",
@@ -96,11 +97,34 @@ plt.rcParams.update({
 # Internal helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _extract_coords(tdata: dict) -> np.ndarray | None:
-    for key in ("coordinates", "coords", "node_coords"):
-        c = tdata.get(key)
-        if c is not None:
-            return np.asarray(c)
+def _mds_coords(dm: np.ndarray) -> np.ndarray:
+    """Classical MDS: reconstruct 2-D positions from a distance matrix."""
+    finite_max = dm[np.isfinite(dm)].max() if np.any(np.isfinite(dm)) else 1.0
+    D  = np.where(np.isinf(dm), finite_max * 10, dm).astype(float)
+    D2 = D ** 2
+    row_mean = D2.mean(axis=1, keepdims=True)
+    col_mean = D2.mean(axis=0, keepdims=True)
+    B  = -0.5 * (D2 - row_mean - col_mean + D2.mean())
+    eigvals, eigvecs = np.linalg.eigh(B)
+    idx     = np.argsort(eigvals)[::-1]
+    eigvals = np.maximum(eigvals[idx][:2], 0.0)
+    eigvecs = eigvecs[:, idx][:, :2]
+    return (eigvecs * np.sqrt(eigvals)).astype(float)
+
+
+def _extract_coords(tdata: dict) -> np.ndarray:
+    """
+    TSPProblem stores no x/y data — coordinates are always MDS-reconstructed
+    from the distance matrix during the experiment run and saved into tdata.
+    If somehow missing, recompute from the distance matrix here.
+    """
+    coords = tdata.get("coordinates")
+    if coords is not None:
+        return np.asarray(coords)
+    # recompute on the fly from the saved distance matrix
+    dm = tdata.get("dist_matrix")
+    if dm is not None:
+        return _mds_coords(np.asarray(dm))
     return None
 
 
@@ -115,20 +139,61 @@ def _draw_sparse_edges(ax, coords: np.ndarray, dm: np.ndarray,
     )
 
 
-def _draw_tour(ax, coords, tour, color, lw=1.8, zorder=3):
-    if coords is None or tour is None:
-        return
-    pts = np.array([coords[i] for i in tour] + [coords[tour[0]]])
-    ax.plot(pts[:, 0], pts[:, 1], "-", color=color,
-            linewidth=lw, alpha=0.9, zorder=zorder)
-
-
-def _scatter_nodes(ax, coords, s=70):
+def _draw_graph_nodes(ax, coords: np.ndarray,
+                      node_color: str = "white",
+                      border_color: str = "#222222",
+                      node_size: float = 220,
+                      font_size: float = 6.5) -> None:
+    """
+    Draw every city as a labelled circle — the standard graph-node look.
+    Always called AFTER edges so nodes sit on top.
+    """
     ax.scatter(coords[:, 0], coords[:, 1],
-               c="white", edgecolors="#333333", s=s, zorder=5, linewidths=0.8)
+               s=node_size, c=node_color, edgecolors=border_color,
+               linewidths=1.2, zorder=5)
     for i, (x, y) in enumerate(coords):
-        ax.annotate(str(i), (x, y), fontsize=6.5,
-                    ha="center", va="center", zorder=6)
+        ax.annotate(str(i), (x, y),
+                    fontsize=font_size, ha="center", va="center",
+                    fontweight="bold", zorder=6)
+
+
+def _draw_tour_edges(ax, coords: np.ndarray,
+                     tour: list[int],
+                     color: str,
+                     lw: float = 1.8,
+                     alpha: float = 0.85,
+                     directed: bool = True) -> None:
+    """
+    Draw the tour as explicit graph edges (node_u → node_v).
+    Each of the n edges is drawn individually so overlaps are visible.
+    directed=True adds a small midpoint arrow showing tour direction.
+    """
+    if coords is None or tour is None or len(tour) < 2:
+        return
+
+    n = len(tour)
+    for step in range(n):
+        u = tour[step]
+        v = tour[(step + 1) % n]          # last node wraps back to first
+        x0, y0 = coords[u]
+        x1, y1 = coords[v]
+
+        ax.plot([x0, x1], [y0, y1],
+                color=color, linewidth=lw, alpha=alpha,
+                solid_capstyle="round", zorder=3)
+
+        if directed:
+            mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+            dx = (x1 - x0) * 0.01
+            dy = (y1 - y0) * 0.01
+            ax.annotate("",
+                        xy=(mx + dx, my + dy),
+                        xytext=(mx - dx, my - dy),
+                        arrowprops=dict(arrowstyle="-|>",
+                                        color=color,
+                                        lw=lw * 0.6,
+                                        mutation_scale=9),
+                        zorder=4)
 
 
 def _build_df(results: dict) -> pd.DataFrame:
@@ -196,99 +261,120 @@ class TSPVisualizer:
             df = df[df["test_id"] != "test_0"]
         return df
 
-    # ── 1. test_0 path visualisation ─────────────────────────────────────────
+    # ── 1. test_0 graph visualisation ────────────────────────────────────────
 
     def plot_all_paths(
         self,
         case: str,
         test_id: str = "test_0",
         figsize: tuple = (20, 10),
+        directed: bool = True,
         save_path: str | None = None,
     ) -> plt.Figure:
+        """
+        Draw the TSP result as a proper graph:
+          • Nodes  — circles with city index labels
+          • Edges  — one line per (tour[i] → tour[i+1]) step, closing the loop
+          • For sparse: faint background edges show available connections
+          • Failed tasks show just the node graph with a status stamp
+
+        directed=True adds midpoint arrows to show tour direction.
+        """
         tdata  = self._tdata(case, test_id)
         coords = _extract_coords(tdata)
         dm     = tdata["dist_matrix"]
         algos  = list(tdata["algorithms"].keys())
         n      = tdata["n_cities"]
 
-        n_panels = len(algos) + 1
+        n_panels = len(algos) + 1        # +1 for best-tour overlay
         ncols    = 4
         nrows    = (n_panels + ncols - 1) // ncols
 
-        fig, axes = plt.subplots(nrows, ncols,
-                                 figsize=(figsize[0], figsize[1] * nrows / 2))
+        fig, axes = plt.subplots(
+            nrows, ncols,
+            figsize=(figsize[0], figsize[1] * nrows / 2),
+        )
         axes = np.array(axes).flatten()
 
-        # best-of panel
+        # ── helper: draw background graph for one axis ────────────────────────
+        def _bg(ax):
+            """Draw background: available edges (sparse) or nothing (others)."""
+            if case == "sparse":
+                _draw_sparse_edges(ax, coords, dm, alpha=0.18)
+
+        # ── helper: draw failed-task panel ────────────────────────────────────
+        def _draw_failed(ax, st: str):
+            _bg(ax)
+            # draw all nodes without a tour
+            _draw_graph_nodes(ax, coords, node_color="#EEEEEE",
+                              border_color="#AAAAAA", node_size=180)
+            ax.text(0.5, 0.5, st.upper(),
+                    ha="center", va="center", transform=ax.transAxes,
+                    fontsize=18, color="red", fontweight="bold", alpha=0.6,
+                    bbox=dict(boxstyle="round,pad=0.3", fc="white",
+                              ec="red", alpha=0.5))
+
+        # ── best-tour panel ───────────────────────────────────────────────────
         ok_algos = [a for a in algos
                     if tdata["algorithms"][a].get("status") == "ok"]
-        if ok_algos:
-            best_algo = min(ok_algos,
-                            key=lambda a: tdata["algorithms"][a]["best_fitness"])
+        best_algo = (min(ok_algos,
+                         key=lambda a: tdata["algorithms"][a]["best_fitness"])
+                     if ok_algos else algos[0])
+        best_res  = tdata["algorithms"][best_algo]
+        ax0       = axes[0]
+
+        _bg(ax0)
+        if best_res.get("status") == "ok":
+            _draw_tour_edges(ax0, coords, best_res["best_solution"],
+                             color=ALGO_COLORS.get(best_algo, "#333"),
+                             lw=2.0, directed=directed)
+            _draw_graph_nodes(ax0, coords)
         else:
-            best_algo = algos[0]
+            _draw_failed(ax0, best_res.get("status", "?"))
 
-        best_res = tdata["algorithms"][best_algo]
-        ax0      = axes[0]
-
-        if coords is not None:
-            if case == "sparse":
-                _draw_sparse_edges(ax0, coords, dm)
-            _draw_tour(ax0, coords, best_res.get("best_solution"),
-                       color=ALGO_COLORS.get(best_algo, "black"), lw=2.2)
-            _scatter_nodes(ax0, coords)
-
-        st    = best_res.get("status", "ok")
-        bf    = best_res.get("best_fitness")
-        bf_s  = f"{bf:.1f}" if st == "ok" and bf else st.upper()
+        st   = best_res.get("status", "ok")
+        bf   = best_res.get("best_fitness")
+        bf_s = f"{bf:.1f}" if st == "ok" and bf is not None else st.upper()
         ax0.set_title(f"★ Best  [{ALGO_SHORT.get(best_algo, best_algo)}]\n"
-                      f"dist={bf_s}", fontsize=10, fontweight="bold")
+                      f"dist = {bf_s}",
+                      fontsize=10, fontweight="bold")
         ax0.set_aspect("equal", "box")
-        ax0.set_xlabel("x"); ax0.set_ylabel("y")
+        ax0.axis("off")
 
-        # per-algorithm panels
+        # ── per-algorithm panels ──────────────────────────────────────────────
         for idx, aname in enumerate(algos):
             ax    = axes[idx + 1]
             ares  = tdata["algorithms"][aname]
             color = ALGO_COLORS.get(aname, "gray")
             st    = ares.get("status", "ok")
+            bf    = ares.get("best_fitness")
+            t     = ares.get("execution_time") or 0.0
+            bf_s  = f"{bf:.1f}" if st == "ok" and bf is not None else st.upper()
 
-            if coords is not None and st == "ok":
-                if case == "sparse":
-                    _draw_sparse_edges(ax, coords, dm)
-                _draw_tour(ax, coords, ares.get("best_solution"),
-                           color=color, lw=1.8)
-                _scatter_nodes(ax, coords)
-            elif coords is not None:
-                # show nodes but no tour — stamp status in red
-                if case == "sparse":
-                    _draw_sparse_edges(ax, coords, dm)
-                ax.scatter(coords[:, 0], coords[:, 1],
-                           c="white", edgecolors="#888", s=50, zorder=5)
-                ax.text(0.5, 0.5, st.upper(), ha="center", va="center",
-                        transform=ax.transAxes, fontsize=16, color="red",
-                        fontweight="bold", alpha=0.7)
+            _bg(ax)
+            if st == "ok":
+                _draw_tour_edges(ax, coords, ares["best_solution"],
+                                 color=color, lw=1.7, directed=directed)
+                _draw_graph_nodes(ax, coords)
             else:
-                ax.text(0.5, 0.5, f"No coords\n{st.upper()}",
-                        ha="center", va="center",
-                        transform=ax.transAxes, color="gray")
+                _draw_failed(ax, st)
 
-            bf   = ares.get("best_fitness")
-            t    = ares.get("execution_time") or 0
-            bf_s = f"{bf:.1f}" if st == "ok" and bf else st.upper()
-            ax.set_title(f"{ALGO_SHORT.get(aname, aname)}\n"
-                         f"dist={bf_s}  t={t:.2f}s",
-                         fontsize=9,
-                         color="red" if st != "ok" else "black")
+            ax.set_title(
+                f"{ALGO_SHORT.get(aname, aname)}\n"
+                f"dist = {bf_s}   t = {t:.2f}s",
+                fontsize=9,
+                color="#CC0000" if st != "ok" else "black",
+            )
             ax.set_aspect("equal", "box")
-            ax.set_xlabel("x"); ax.set_ylabel("y")
+            ax.axis("off")
 
         for ax in axes[n_panels:]:
             ax.set_visible(False)
 
+        coords_note = "" if tdata.get("coordinates") is not None else "  (layout via MDS)"
         fig.suptitle(
-            f"TSP Tours  ·  {CASE_LABEL.get(case, case)}  ·  "
-            f"{test_id}  ·  {n} cities",
+            f"TSP Graph  ·  {CASE_LABEL.get(case, case)}  ·  "
+            f"{test_id}  ·  {n} cities{coords_note}",
             fontsize=13, fontweight="bold", y=1.01,
         )
         fig.tight_layout()
@@ -606,7 +692,7 @@ class TSPVisualizer:
                                label=f"{label} [{st}]", alpha=0.5)
                 continue
 
-            if curve and len(curve) > 1:
+            if curve is not None and len(curve) > 1:
                 iters = np.arange(len(curve))
                 ax1.plot(iters, curve, color=color, linewidth=2, label=label)
                 ax2.semilogy(iters, [max(v, 1e-9) for v in curve],
