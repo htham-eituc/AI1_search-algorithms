@@ -869,41 +869,71 @@ def plot_parameter_sensitivity(
     ax=None,
     save_path=None,
 ) -> plt.Axes:
-    """
-    Plot convergence curves for different values of one hyperparameter.
 
-    Parameters
-    ----------
-    results_dict : dict  {param_value: convergence_curve np.ndarray}
-    param_name   : str   e.g. "step_size", "mutation_rate", "F"
-    param_values : list  ordered list of the param values used (for legend sort)
-    """
     ax = _get_ax(ax, figsize=(9, 5))
 
-    cmap   = plt.get_cmap("plasma")
+    # Ensure numeric sorting
+    param_values = sorted(param_values)
+
+    cmap = plt.get_cmap("plasma")
     colors = [cmap(i / max(len(param_values) - 1, 1))
               for i in range(len(param_values))]
 
     for i, val in enumerate(param_values):
         if val not in results_dict:
             continue
+
         curve = _smooth(np.array(results_dict[val]), smooth_window)
         iters = np.arange(len(curve))
-        ax.plot(iters, curve, color=colors[i], lw=2,
-                label=f"{param_name}={val}")
+
+        ax.plot(
+            iters,
+            curve,
+            color=colors[i],
+            lw=2,
+            label=f"{param_name}={val:g}"   # cleaner formatting
+        )
 
     if log_scale:
         ax.set_yscale("log")
+
     ax.set_xlabel("Iteration", fontsize=12)
     ax.set_ylabel("Best Fitness", fontsize=12)
-    ax.set_title(f"Parameter Sensitivity: {algo_name} — {param_name}\n"
-                 f"Problem: {problem}", fontsize=12)
-    ax.legend(fontsize=10, ncol=1)
+
+    ax.set_title(
+        f"Parameter Sensitivity: {algo_name} — {param_name}\nProblem: {problem}",
+        fontsize=12
+    )
+
     ax.grid(True, which="both", alpha=0.3)
+
+    # ---------- FIXED LEGEND ----------
+    handles, labels = ax.get_legend_handles_labels()
+
+    # sort legend by numeric parameter value
+    sorted_pairs = sorted(
+        zip(handles, labels),
+        key=lambda x: float(x[1].split("=")[1])
+    )
+
+    handles, labels = zip(*sorted_pairs)
+
+    ax.legend(
+        handles,
+        labels,
+        title=param_name,
+        fontsize=10,
+        title_fontsize=11,
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),  # move legend outside
+        frameon=True
+    )
+    # ----------------------------------
+
+    ax.get_figure().tight_layout()
 
     _save_or_show(ax.get_figure(), save_path)
     return ax
-
 
 # ---------------------------------------------------------------------------
 # 14.  Time-to-threshold heatmap

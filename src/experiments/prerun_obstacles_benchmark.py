@@ -11,7 +11,7 @@ import numpy as np
 PROJECT_ROOT = Path(r"D:\Uni\IT\IntroToAI\AI1_search-algorithms\src")
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from experiments.grid_experiment import GridExperiment
+from experiments.prerun_grid_experiment import GridExperiment
 from problems.discrete import SPProblem
 
 CASE_NAME = "obstacles"
