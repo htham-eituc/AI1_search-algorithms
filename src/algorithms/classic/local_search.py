@@ -100,6 +100,14 @@ class HillClimbing(BaseGraphSearch):
         self.execution_time = time.time() - t0
         return self
 
+    def get_results(self):
+        results = super().get_results()
+        results.update({
+            "time_complexity": "O(max_restarts * n)  # n=grid size (cells)",
+            "space_complexity": "O(n)  # visited set + path",
+        })
+        return results
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  2. Hill Climbing — Steepest Ascent (Continuous)

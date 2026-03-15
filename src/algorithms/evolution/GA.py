@@ -210,6 +210,17 @@ class GA_TSP:
         self.execution_time = time.time() - t0
         return self
 
+    def get_results(self):
+        """Return a standardized results dictionary."""
+        return {
+            "algorithm": "GA_TSP",
+            "best_fitness": float(self.best_fitness),
+            "best_solution": self.best_solution.tolist() if self.best_solution is not None else None,
+            "execution_time_seconds": self.execution_time,
+            "time_complexity": "O(max_iter * pop_size * n)  # n=cities",
+            "space_complexity": "O(pop_size * n + n^2)  # population + distance matrix",
+        }
+
 
 # ==============================================================================
 #  GA_Grid — Genetic Algorithm for Grid Pathfinding

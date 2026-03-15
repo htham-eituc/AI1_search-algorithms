@@ -341,5 +341,7 @@ class A_STAR_TSP:
             "best_solution": self.best_solution,
             "execution_time_seconds": self.execution_time,
             "nodes_expanded": self.nodes_expanded,
+            "time_complexity": "O(n * 2^n)  # state space is O(n * 2^n)",
+            "space_complexity": "O(n * 2^n)  # open/closed sets",
             "note": "Optimal but only practical for n <= 20. Uses bitmask state representation.",
         }

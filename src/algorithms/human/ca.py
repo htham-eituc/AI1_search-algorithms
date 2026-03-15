@@ -222,6 +222,7 @@ class CA_TSP(BaseAlgorithm):
         # Tracking curves
         self.convergence_curve = np.zeros(max_iter)
         self.average_fitness_curve = np.zeros(max_iter)
+        self.population_history = []
 
     def _tour_length(self, tour: np.ndarray) -> float:
         n = self.n_cities
@@ -321,6 +322,7 @@ class CA_TSP(BaseAlgorithm):
         results.update({
             "convergence_curve": self.convergence_curve,
             "average_fitness_curve": self.average_fitness_curve,
+            "population_history": self.population_history,
             "time_complexity": time_complexity,
             "space_complexity": space_complexity,
             "estimated_memory_bytes": estimated_memory_bytes,
